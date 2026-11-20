@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn diff_is_empty_for_equal_states() {
         let s = DesiredState::default();
-        assert!(diff(&s, &s).is_empty());
+        assert_eq!(diff(&s, &s), "");
         let mut t = s.clone();
         t.limits.max_body_bytes = 1;
         assert!(diff(&s, &t).contains("+max_body_bytes = 1"));

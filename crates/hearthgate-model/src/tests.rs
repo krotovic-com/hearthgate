@@ -68,7 +68,7 @@ listeners = [{ port = 80, mode = "http" }, { port = 81, mode = "http" }]
 
 #[test]
 fn empty_state_is_valid() {
-    assert!(messages("").is_empty());
+    assert_eq!(messages(""), [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -116,7 +116,7 @@ listeners = [{ port = 443, mode = "https" }]
 "#;
     assert_problem(base, "accept_terms");
     let manual = base.replace("name = \"web\"", "name = \"web\"\ncertificate = \"mine\"");
-    assert!(messages(&manual).is_empty());
+    assert_eq!(messages(&manual), [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -181,7 +181,7 @@ listeners = [{ port = 2222, mode = "raw" }]
         "raw forwarding cannot share",
     );
     // TCP and UDP on the same number are different sockets.
-    assert!(
+    assert_eq!(
         messages(
             r#"
 [[interfaces]]
@@ -191,8 +191,8 @@ listeners = [{ port = 53, mode = "raw" }]
 name = "b"
 listeners = [{ port = 53, mode = "raw", protocol = "udp" }]
 "#
-        )
-        .is_empty()
+        ),
+        [] as [std::string::String; 0]
     );
 }
 
