@@ -5,8 +5,10 @@ on:
     branches: [main]
     types: [opened, edited, synchronize, reopened]
 
+# Title and body edits get their own group, so editing a PR never cancels
+# a test run for its latest commit (edited runs skip the tests).
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
+  group: ci-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && 'edited' || 'code' }}
   cancel-in-progress: true
 
 permissions:

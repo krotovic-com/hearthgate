@@ -37,7 +37,9 @@ for target in "${targets[@]}"; do
   mkdir -p "$stage"
   cp "target/$target/release/hearthgate" "$stage/"
   cp LICENSE README.md "$stage/"
-  cp packaging/systemd/hearthgate.service "$stage/"
+  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers "$stage/"
+  mkdir -p "$stage/examples"
+  cp packaging/hearthgate.toml packaging/examples/state.toml "$stage/examples/"
   tar -C dist -czf "dist/$name.tar.gz" "$name"
   rm -rf "$stage"
 done

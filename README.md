@@ -15,13 +15,24 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** early development. The current releases contain the project skeleton only. Nothing is proxied or exposed yet. See the [roadmap](docs/ROADMAP.md) for what lands in each release.
+> **Status:** early development. The core gateway works: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a CLI and an admin API. The dashboard, firewall, VPN and managed Docker stacks are next. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
 
-## What it will do
+## What it does
+
+Available now:
+
+- **Public interfaces.** A domain plus public ports (TCP, UDP or both), with automatic certificate issuance and renewal (Let's Encrypt or any ACME CA), or certificates you upload.
+- **Routes and load balancing.** Point a port at one or more services, by host name and path. Round-robin with weights, least connections or source hash, with active health checks.
+- **TLS your way.** Terminate TLS in Hearthgate, or pass it through untouched by server name, on the same port.
+- **Services.** Route to programs on your network (such as sshd) or to existing Docker containers, which are followed across restarts.
+- **Every change is a revision.** Apply a file, see the diff, roll back. Changes take effect within a second without dropping open connections.
+- **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks with a token, and Prometheus metrics.
+
+Coming next:
 
 - **Public interfaces.** A domain plus public ports (TCP, UDP or both), with automatic certificate issuance and renewal.
 - **Routes and load balancing.** Point a public interface at one or more services. Two or more targets are load-balanced.
-- **Services.** Route to system services managed outside Hearthgate (such as sshd), or to Docker containers and stacks that Hearthgate manages.
+- **Managed Docker.** Docker containers and stacks that Hearthgate starts and updates for you.
 - **Built-in VPN.** Peers reach every internal service, published or not, with internal DNS at `name.home.internal`.
 - **Firewall and blocklists.** Unexposed ports stay closed, and known-bad sources are blocked.
 - **UPnP.** Optionally opens and closes router ports to match your public interfaces.
@@ -48,10 +59,24 @@ sha256sum --check --ignore-missing SHA256SUMS
 tar -xzf "hearthgate-v$VERSION-$TARGET.tar.gz"
 cd "hearthgate-v$VERSION-$TARGET"
 sudo install -m 0755 hearthgate /usr/local/bin/hearthgate
+sudo install -m 0644 hearthgate.sysusers /usr/lib/sysusers.d/hearthgate.conf
+sudo systemd-sysusers
 sudo install -m 0644 hearthgate.service /etc/systemd/system/hearthgate.service
+sudo install -d -m 0755 /etc/hearthgate
+sudo install -m 0644 examples/hearthgate.toml /etc/hearthgate/hearthgate.toml
 sudo systemctl daemon-reload
 sudo systemctl enable --now hearthgate
 ```
+
+Then describe what to expose in a file (start from `examples/state.toml`) and apply it:
+
+```sh
+sudo -u hearthgate hearthgate validate state.toml
+sudo -u hearthgate hearthgate apply state.toml
+sudo -u hearthgate hearthgate status
+```
+
+The [user guide](docs/guide.md) covers every setting, the CLI, certificates and the admin API.
 
 ## Build from source
 

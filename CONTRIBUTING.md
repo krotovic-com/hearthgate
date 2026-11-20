@@ -29,6 +29,34 @@ scripts/build-release.sh 0.0.0-test aarch64-unknown-linux-musl   # just one
 
 Archives and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs.
 
+### Workspace layout
+
+| Crate | What it holds |
+|---|---|
+| `hearthgate` | The binary: CLI, bootstrap config and the daemon that wires everything together |
+| `crates/hearthgate-model` | The desired-state types, TOML/JSON (de)serialization and validation |
+| `crates/hearthgate-store` | SQLite revision store |
+| `crates/hearthgate-proxy` | Listeners, L4 and HTTP proxying, TLS, load balancing, metrics |
+| `crates/hearthgate-acme` | Certificate storage and ACME issuance |
+| `crates/hearthgate-services` | Health checks and read-only Docker discovery |
+| `crates/hearthgate-api` | Admin REST API and OpenAPI document |
+
+### ACME tests
+
+The ACME integration tests run against [Pebble](https://github.com/letsencrypt/pebble), Let's Encrypt's test CA, and are skipped when it isn't installed. To run them:
+
+```sh
+go install github.com/letsencrypt/pebble/v2/cmd/pebble@v2.8.0
+go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@v2.8.0
+cargo test -p hearthgate-acme --test pebble
+```
+
+They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
+
+### Docker discovery
+
+The Docker tests use a fake container table, so they don't need Docker. To try discovery for real, run the daemon with a `docker` service and start or reconnect the container; `hearthgate status` and `/api/v1/status` show the address it resolved.
+
 ## Test locally before you push
 
 CI minutes are limited, so treat CI as the final check, not your test runner. Before pushing, run:
