@@ -1,0 +1,25 @@
+[Unit]
+Description=Hearthgate home server gateway
+Documentation=https://github.com/krotovic-com/hearthgate
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hearthgate --config /etc/hearthgate/hearthgate.toml
+Restart=on-failure
+RestartSec=5s
+
+# Hearthgate binds 80/443 and manages the VPN interface and firewall rules.
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+StateDirectory=hearthgate
+ConfigurationDirectory=hearthgate
+LogsDirectory=hearthgate
+
+[Install]
+WantedBy=multi-user.target
