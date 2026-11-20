@@ -18,14 +18,19 @@ hearthgate-store.workspace = true
 hearthgate-proxy.workspace = true
 hearthgate-acme.workspace = true
 hearthgate-services.workspace = true
+hearthgate-api.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+ipnet.workspace = true
+sd-notify.workspace = true
+tokio-util.workspace = true
 serde.workspace = true
 similar.workspace = true
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

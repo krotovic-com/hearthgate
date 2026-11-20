@@ -79,6 +79,10 @@ pub enum Command {
     /// Show what changed between two revisions (default: the given one and
     /// the current one).
     Diff { from: i64, to: Option<i64> },
+    /// Print the admin API token (created on first use).
+    AdminToken,
+    /// Print the admin API's OpenAPI document.
+    Openapi,
     /// Manage manually uploaded certificates.
     #[command(subcommand)]
     Cert(CertCommand),
@@ -140,6 +144,23 @@ impl Cli {
             Command::Diff { from, to } => diff_revisions(&bootstrap, from, to),
             Command::Rollback { revision, dry_run } => rollback(&bootstrap, revision, dry_run),
             Command::Cert(command) => cert(&bootstrap, command),
+            Command::AdminToken => {
+                let token = hearthgate_api::load_or_create_token(&bootstrap.data_dir)
+                    .with_context(|| {
+                        format!(
+                            "cannot read the admin token in {}",
+                            bootstrap.data_dir.display()
+                        )
+                    })?;
+                println!("{token}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Command::Openapi => {
+                use hearthgate_api::ApiDoc;
+                use utoipa::OpenApi;
+                println!("{}", ApiDoc::openapi().to_pretty_json()?);
+                Ok(ExitCode::SUCCESS)
+            }
         }
     }
 }

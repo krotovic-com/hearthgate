@@ -123,7 +123,7 @@ impl Store {
             restrict(path, 0o600)?;
         }
         conn.busy_timeout(Duration::from_secs(5))?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        set_wal(&conn)?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
         Self::with_connection(conn)
@@ -307,9 +307,32 @@ fn meta_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RevisionMeta> {
     })
 }
 
+/// Switches to WAL. The switch needs a moment of exclusive access, and
+/// SQLite reports "database is locked" without calling the busy handler
+/// when another connection opens the same new file at that instant, so
+/// retry for a while.
+fn set_wal(conn: &Connection) -> Result<(), StoreError> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        match conn.pragma_update(None, "journal_mode", "WAL") {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::DatabaseBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            other => return other.map_err(StoreError::from),
+        }
+    }
+}
+
 fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
     let supported = i64::try_from(MIGRATIONS.len()).expect("few migrations");
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    // One immediate transaction for the whole upgrade: when the daemon and
+    // the CLI open a new database at the same moment, the second waits and
+    // then sees the schema the first created.
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let version: i64 = tx.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version > supported {
         return Err(StoreError::TooNew {
             found: version,
@@ -320,11 +343,10 @@ fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         .zip(MIGRATIONS)
         .skip(usize::try_from(version).unwrap_or(0))
     {
-        let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         tx.pragma_update(None, "user_version", n)?;
-        tx.commit()?;
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -446,6 +468,23 @@ targets = [{{ service = "sshd", port = "ssh" }}]
             let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode(&data), 0o700);
             assert_eq!(mode(&data.join(DATABASE_FILE)), 0o600);
+        }
+    }
+
+    #[test]
+    fn concurrent_first_opens_agree_on_the_schema() {
+        for _ in 0..20 {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(DATABASE_FILE);
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    let path = path.clone();
+                    std::thread::spawn(move || Store::open(&path).map(|_| ()))
+                })
+                .collect();
+            for h in handles {
+                h.join().unwrap().unwrap();
+            }
         }
     }
 

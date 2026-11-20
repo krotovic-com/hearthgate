@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct DesiredState {
     /// Certificate authority settings for automatic certificates.
@@ -28,6 +29,7 @@ pub struct DesiredState {
 
 /// Settings for automatic certificates (ACME).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AcmeSettings {
     /// Contact email registered with the CA. Optional, but recommended so the
@@ -48,6 +50,7 @@ pub struct AcmeSettings {
     pub accept_terms: bool,
     /// Renew a certificate when it has less than this long left.
     #[serde(default = "defaults::renew_before", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub renew_before: Duration,
     /// Challenge type. By default `http-01` when the interface has an
     /// `http` listener (normally port 80), otherwise `tls-alpn-01` on its
@@ -62,6 +65,7 @@ pub struct AcmeSettings {
 
 /// ACME challenge type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum AcmeChallenge {
     #[serde(rename = "http-01")]
     Http01,
@@ -102,6 +106,7 @@ impl AcmeSettings {
 
 /// Limits and timeouts for proxied traffic.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Limits {
     /// Largest HTTP request body accepted, in bytes.
@@ -109,22 +114,28 @@ pub struct Limits {
     pub max_body_bytes: u64,
     /// Time allowed to receive request headers.
     #[serde(default = "defaults::header_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub header_timeout: Duration,
     /// Time allowed for an upstream to answer an HTTP request.
     #[serde(default = "defaults::upstream_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub upstream_timeout: Duration,
     /// Time allowed to connect to an upstream.
     #[serde(default = "defaults::connect_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub connect_timeout: Duration,
     /// Close idle TCP connections after this long.
     #[serde(default = "defaults::tcp_idle_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub tcp_idle_timeout: Duration,
     /// Forget UDP client sessions after this long without traffic.
     #[serde(default = "defaults::udp_session_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub udp_session_timeout: Duration,
     /// How long removed listeners keep serving open connections before they
     /// are closed.
     #[serde(default = "defaults::drain_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub drain_timeout: Duration,
 }
 
@@ -144,6 +155,7 @@ impl Default for Limits {
 
 /// A public interface: one or more domains reachable on a set of ports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Interface {
     /// Unique name, lowercase letters, digits and dashes.
@@ -153,6 +165,7 @@ pub struct Interface {
     pub domains: Vec<String>,
     /// Local addresses to bind. Empty means all IPv4 and IPv6 addresses.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub bind: Vec<IpAddr>,
     /// Name of a manually uploaded certificate. When unset, `https`
     /// listeners get an automatic certificate for `domains`.
@@ -184,6 +197,7 @@ impl Interface {
 
 /// A port on a public interface.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Listener {
     /// Port number.
@@ -211,6 +225,7 @@ impl Listener {
 
 /// How a listener handles traffic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum ListenerMode {
     /// TLS terminated by Hearthgate, then HTTP routing by host and path.
@@ -239,6 +254,7 @@ impl fmt::Display for ListenerMode {
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Protocol {
     #[default]
@@ -259,6 +275,7 @@ impl fmt::Display for Protocol {
 
 /// Something Hearthgate can forward traffic to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Service {
     /// Unique name, lowercase letters, digits and dashes. Later also the
@@ -285,6 +302,7 @@ pub struct Service {
 
 /// Where a service runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum ServiceKind {
     /// A service managed outside Hearthgate, reached by host and port.
@@ -295,6 +313,7 @@ pub enum ServiceKind {
 
 /// Active health check for a service.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct HealthCheck {
     /// `tcp` connects, `http` sends a GET and expects a 2xx or 3xx status.
@@ -309,9 +328,11 @@ pub struct HealthCheck {
     pub path: String,
     /// Time between checks.
     #[serde(default = "defaults::health_interval", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub interval: Duration,
     /// Time allowed for one check.
     #[serde(default = "defaults::health_timeout", with = "humantime_serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub timeout: Duration,
     /// Consecutive successes before a target is healthy again.
     #[serde(default = "defaults::healthy_threshold")]
@@ -323,6 +344,7 @@ pub struct HealthCheck {
 
 /// Kind of health check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthCheckKind {
     Tcp,
@@ -331,6 +353,7 @@ pub enum HealthCheckKind {
 
 /// A reference to a service port: by name or by number.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(untagged)]
 pub enum PortRef {
     Number(u16),
@@ -359,6 +382,7 @@ impl Service {
 
 /// Connects a listener to one or more service ports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Route {
     /// Unique name.
@@ -386,6 +410,7 @@ pub struct Route {
 
 /// A route upstream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     /// Service name.
@@ -401,6 +426,7 @@ pub struct Target {
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     /// Weighted round robin.

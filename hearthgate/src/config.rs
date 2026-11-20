@@ -4,7 +4,10 @@
 //! database. Interfaces, services and routes live in the database and are
 //! changed with `hearthgate apply`, never here.
 
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+
+use ipnet::IpNet;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -24,6 +27,12 @@ pub struct Bootstrap {
     /// Log filter, for example `info` or `hearthgate=debug,info`.
     #[serde(default = "default_log")]
     pub log: String,
+    /// Admin API.
+    #[serde(default)]
+    pub admin: Admin,
+    /// Docker discovery for `kind = "docker"` services.
+    #[serde(default)]
+    pub docker: Docker,
 }
 
 impl Default for Bootstrap {
@@ -31,8 +40,89 @@ impl Default for Bootstrap {
         Self {
             data_dir: default_data_dir(),
             log: default_log(),
+            admin: Admin::default(),
+            docker: Docker::default(),
         }
     }
+}
+
+/// Admin API settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Admin {
+    /// Addresses to listen on. Loopback only by default; add the server's
+    /// LAN address to reach it from other machines. Empty disables the API.
+    #[serde(default = "default_admin_listen")]
+    pub listen: Vec<SocketAddr>,
+    /// Client ranges allowed to connect. Everyone else is disconnected
+    /// before anything is read, even if `listen` is misconfigured.
+    #[serde(default = "default_admin_allow")]
+    pub allow: Vec<IpNet>,
+    /// Serve `/metrics` without the admin token (still only to `allow`).
+    #[serde(default)]
+    pub metrics_without_token: bool,
+}
+
+impl Default for Admin {
+    fn default() -> Self {
+        Self {
+            listen: default_admin_listen(),
+            allow: default_admin_allow(),
+            metrics_without_token: false,
+        }
+    }
+}
+
+/// Default admin port.
+pub const ADMIN_PORT: u16 = 7380;
+
+fn default_admin_listen() -> Vec<SocketAddr> {
+    vec![SocketAddr::from(([127, 0, 0, 1], ADMIN_PORT))]
+}
+
+/// Loopback and private ranges (RFC 1918, ULA, link-local).
+fn default_admin_allow() -> Vec<IpNet> {
+    [
+        "127.0.0.0/8",
+        "::1/128",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "fc00::/7",
+        "fe80::/10",
+    ]
+    .iter()
+    .map(|n| n.parse().expect("valid default range"))
+    .collect()
+}
+
+/// Docker discovery settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Docker {
+    /// Watch Docker when its socket exists.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Path of the Docker socket.
+    #[serde(default = "default_docker_socket")]
+    pub socket: PathBuf,
+}
+
+impl Default for Docker {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            socket: default_docker_socket(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_docker_socket() -> PathBuf {
+    PathBuf::from("/var/run/docker.sock")
 }
 
 fn default_data_dir() -> PathBuf {
@@ -76,6 +166,14 @@ mod tests {
     #[test]
     fn explicit_missing_file_is_an_error() {
         assert!(Bootstrap::load(Some(Path::new("/nonexistent/hearthgate.toml"))).is_err());
+    }
+
+    #[test]
+    fn example_file_parses() {
+        let text = include_str!("../../packaging/hearthgate.toml");
+        let parsed: Bootstrap = toml::from_str(text).unwrap();
+        assert_eq!(parsed.admin, Admin::default());
+        assert_eq!(parsed.docker, Docker::default());
     }
 
     #[test]
