@@ -16,6 +16,7 @@ publish.workspace = true
 hearthgate-model.workspace = true
 hearthgate-store.workspace = true
 hearthgate-proxy.workspace = true
+hearthgate-acme.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true

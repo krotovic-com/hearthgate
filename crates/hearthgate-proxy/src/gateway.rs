@@ -24,9 +24,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, info, warn};
 
+use crate::http::{self, ConnInfo, HttpChallenges, HttpContext};
 use crate::l4;
-use crate::plan::{Plan, SocketKey, SocketKind, SocketPlan, Transport};
+use crate::plan::{Plan, SocketKey, SocketKind, SocketPlan, TlsPlan, Transport};
 use crate::pool::Upstreams;
+use crate::tls::{self, Certificates};
 
 /// Configuration a running socket reads for every new connection.
 #[derive(Debug)]
@@ -69,9 +71,18 @@ pub struct SocketStatus {
     pub open_connections: usize,
 }
 
+/// Shared by every socket.
+pub(crate) struct Ctx {
+    pub(crate) http: Arc<HttpContext>,
+    pub(crate) acceptor: tokio_rustls::TlsAcceptor,
+}
+
 /// The data plane.
 pub struct Gateway {
     upstreams: Arc<Upstreams>,
+    certs: Arc<Certificates>,
+    challenges: Arc<HttpChallenges>,
+    ctx: Arc<Ctx>,
     sockets: Mutex<HashMap<SocketKey, Running>>,
     drains: TaskTracker,
     /// Cut every drain short (on shutdown).
@@ -87,12 +98,33 @@ impl Default for Gateway {
 impl Gateway {
     #[must_use]
     pub fn new() -> Self {
+        let certs = Arc::new(Certificates::default());
+        let challenges = Arc::new(HttpChallenges::default());
+        let ctx = Arc::new(Ctx {
+            http: Arc::new(HttpContext::new(Arc::clone(&challenges))),
+            acceptor: tokio_rustls::TlsAcceptor::from(tls::server_config(Arc::clone(&certs))),
+        });
         Self {
+            certs,
+            challenges,
+            ctx,
             upstreams: Arc::new(Upstreams::default()),
             sockets: Mutex::new(HashMap::new()),
             drains: TaskTracker::new(),
             closing: CancellationToken::new(),
         }
+    }
+
+    /// Certificates served by `https` listeners.
+    #[must_use]
+    pub fn certificates(&self) -> &Arc<Certificates> {
+        &self.certs
+    }
+
+    /// Pending ACME HTTP-01 challenges answered on `http` listeners.
+    #[must_use]
+    pub fn http_challenges(&self) -> &Arc<HttpChallenges> {
+        &self.challenges
     }
 
     /// The upstream registry plans must be compiled against.
@@ -134,7 +166,7 @@ impl Gateway {
                 running.shared.store(Arc::new(shared));
                 continue;
             }
-            match start(*key, shared) {
+            match start(*key, shared, &self.ctx) {
                 Ok(running) => {
                     info!(socket = %key, local = %running.local, "listening");
                     sockets.insert(*key, running);
@@ -209,7 +241,7 @@ impl Gateway {
     }
 }
 
-fn start(key: SocketKey, shared: Shared) -> io::Result<Running> {
+fn start(key: SocketKey, shared: Shared, ctx: &Arc<Ctx>) -> io::Result<Running> {
     let kind = shared.plan.kind();
     let shared = Arc::new(ArcSwap::from_pointee(shared));
     let accept = CancellationToken::new();
@@ -221,6 +253,8 @@ fn start(key: SocketKey, shared: Shared) -> io::Result<Running> {
             let local = listener.local_addr()?;
             let task = tokio::spawn(accept_loop(
                 listener,
+                local,
+                Arc::clone(ctx),
                 Arc::clone(&shared),
                 accept.clone(),
                 connections.clone(),
@@ -234,10 +268,10 @@ fn start(key: SocketKey, shared: Shared) -> io::Result<Running> {
             let shared = Arc::clone(&shared);
             let current = move || {
                 let s = shared.load();
-                let pool = match &s.plan {
-                    SocketPlan::Udp(pool) | SocketPlan::RawTcp(pool) => Arc::clone(pool),
-                };
-                (pool, Arc::clone(&s.limits))
+                match &s.plan {
+                    SocketPlan::Udp(pool) => Some((Arc::clone(pool), Arc::clone(&s.limits))),
+                    _ => None,
+                }
             };
             let task = tokio::spawn(l4::run_udp(socket, current, accept.clone()));
             (task, local)
@@ -256,6 +290,8 @@ fn start(key: SocketKey, shared: Shared) -> io::Result<Running> {
 
 async fn accept_loop(
     listener: TcpListener,
+    local: SocketAddr,
+    ctx: Arc<Ctx>,
     shared: Arc<ArcSwap<Shared>>,
     accept: CancellationToken,
     connections: CancellationToken,
@@ -275,28 +311,142 @@ async fn accept_loop(
             },
         };
         let current = shared.load_full();
-        tracker.spawn(handle(stream, peer, current, connections.child_token()));
+        tracker.spawn(handle(
+            stream,
+            peer,
+            local.port(),
+            current,
+            Arc::clone(&ctx),
+            connections.child_token(),
+        ));
     }
 }
 
 async fn handle(
     stream: TcpStream,
     peer: SocketAddr,
+    port: u16,
     shared: Arc<Shared>,
+    ctx: Arc<Ctx>,
     cancel: CancellationToken,
 ) {
+    let limits = Arc::clone(&shared.limits);
     match &shared.plan {
-        SocketPlan::RawTcp(pool) | SocketPlan::Udp(pool) => {
-            l4::handle_tcp(
-                stream,
+        SocketPlan::RawTcp(pool) => {
+            l4::handle_tcp(stream, peer, Arc::clone(pool), limits, cancel).await;
+        }
+        SocketPlan::Udp(_) => {}
+        SocketPlan::Http(table) => {
+            let _ = stream.set_nodelay(true);
+            let info = ConnInfo {
                 peer,
-                Arc::clone(pool),
-                Arc::clone(&shared.limits),
+                tls: false,
+                port,
+            };
+            http::serve(
+                stream,
+                info,
+                Arc::clone(table),
+                limits,
+                Arc::clone(&ctx.http),
                 cancel,
             )
             .await;
         }
+        SocketPlan::Tls(plan) => {
+            handle_tls(stream, peer, port, Arc::clone(plan), limits, ctx, cancel).await;
+        }
     }
+}
+
+async fn handle_tls(
+    mut stream: TcpStream,
+    peer: SocketAddr,
+    port: u16,
+    plan: Arc<TlsPlan>,
+    limits: Arc<Limits>,
+    ctx: Arc<Ctx>,
+    cancel: CancellationToken,
+) {
+    let _ = stream.set_nodelay(true);
+    let hello =
+        tokio::time::timeout(limits.header_timeout, tls::read_client_hello(&mut stream)).await;
+    let (prefix, hello) = match hello {
+        Ok(Ok((prefix, Some(hello)))) => (prefix, hello),
+        Ok(Ok((_, None))) => {
+            debug!(client = %peer, "not a TLS client hello");
+            return;
+        }
+        Ok(Err(e)) => {
+            debug!(client = %peer, "reading client hello failed: {e}");
+            return;
+        }
+        Err(_) => return,
+    };
+    let sni = hello.sni.as_deref();
+    let acme = hello.alpn.iter().any(|p| p == tls::ACME_TLS_ALPN);
+    if !acme {
+        if let Some(pool) = plan.passthrough_for(sni) {
+            let client = tls::Prefixed::new(prefix, stream);
+            passthrough(client, peer, pool, &limits, &cancel).await;
+            return;
+        }
+    }
+    if !acme && !plan.terminates(sni) {
+        debug!(client = %peer, sni = ?sni, "no interface serves this name");
+        return;
+    }
+    let client = tls::Prefixed::new(prefix, stream);
+    let accepted = tokio::time::timeout(limits.header_timeout, ctx.acceptor.accept(client)).await;
+    let tls_stream = match accepted {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            debug!(client = %peer, sni = ?sni, "TLS handshake failed: {e}");
+            return;
+        }
+        Err(_) => return,
+    };
+    if tls_stream.get_ref().1.alpn_protocol() == Some(tls::ACME_TLS_ALPN) {
+        // TLS-ALPN-01 validation only needs the handshake.
+        return;
+    }
+    let info = ConnInfo {
+        peer,
+        tls: true,
+        port,
+    };
+    let table = Arc::clone(&plan.https);
+    http::serve(
+        tls_stream,
+        info,
+        table,
+        limits,
+        Arc::clone(&ctx.http),
+        cancel,
+    )
+    .await;
+}
+
+async fn passthrough(
+    client: tls::Prefixed<TcpStream>,
+    peer: SocketAddr,
+    pool: &Arc<crate::pool::Pool>,
+    limits: &Limits,
+    cancel: &CancellationToken,
+) {
+    let Some((upstream, state, _guard)) =
+        l4::connect(pool, l4::client_ip(peer), limits.connect_timeout).await
+    else {
+        warn!(route = %pool.route, client = %peer, "no upstream available");
+        return;
+    };
+    let (sent, received) = l4::pipe(client, upstream, limits.tcp_idle_timeout, cancel).await;
+    state
+        .bytes_sent
+        .fetch_add(sent, std::sync::atomic::Ordering::Relaxed);
+    state
+        .bytes_received
+        .fetch_add(received, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Creates a socket for `addr`. `[::]` is bound dual-stack; when the host

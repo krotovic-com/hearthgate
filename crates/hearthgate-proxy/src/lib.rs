@@ -6,9 +6,11 @@
 //! on sockets that did not change.
 
 pub mod gateway;
+pub mod http;
 pub mod l4;
 pub mod plan;
 pub mod pool;
+pub mod tls;
 
 pub use gateway::{BindError, Gateway, SocketStatus};
 pub use plan::{ContainerLookup, NoContainers, Plan, SocketKey, SocketKind, Transport, compile};

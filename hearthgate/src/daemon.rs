@@ -9,7 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use hearthgate_acme::CertStore;
 use hearthgate_model::DesiredState;
+use hearthgate_proxy::plan::CertSpec;
 use hearthgate_proxy::{Gateway, NoContainers, compile};
 use hearthgate_store::Store;
 use tokio::signal::unix::{SignalKind, signal};
@@ -49,6 +51,9 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
     })?);
     let mut daemon = Daemon {
         store,
+        certs: CertStore::new(&bootstrap.data_dir),
+        cert_generation: String::new(),
+        cert_specs: Vec::new(),
         gateway: Arc::new(Gateway::new()),
         applied: None,
         retry_at: None,
@@ -85,6 +90,11 @@ const BIND_RETRY: Duration = Duration::from_secs(10);
 
 struct Daemon {
     store: Arc<Store>,
+    certs: CertStore,
+    /// Last seen certificate store generation.
+    cert_generation: String,
+    /// Certificates the running revision needs.
+    cert_specs: Vec<CertSpec>,
     gateway: Arc<Gateway>,
     /// Revision running now; 0 stands for "no revisions yet".
     applied: Option<i64>,
@@ -116,11 +126,15 @@ impl Daemon {
             .retry_at
             .is_some_and(|at| tokio::time::Instant::now() >= at);
         if self.applied == Some(key) && !force && !retry_due {
+            self.reload_certificates_if_changed();
             return;
         }
         let state = revision.map(|r| r.state).unwrap_or_default();
         self.drain = state.limits.drain_timeout;
         let plan = compile(&state, self.gateway.upstreams(), &NoContainers);
+        // Certificates first, so the first handshake on a new port has one.
+        self.cert_specs.clone_from(&plan.certs);
+        self.load_certificates(true);
         let errors = self.gateway.apply(&plan).await;
         if errors.is_empty() {
             self.retry_at = None;
@@ -143,5 +157,24 @@ impl Daemon {
             }
         }
         self.applied = Some(key);
+    }
+
+    fn reload_certificates_if_changed(&mut self) {
+        if self.certs.generation() != self.cert_generation {
+            info!("certificates changed; reloading");
+            self.load_certificates(true);
+        }
+    }
+
+    /// Loads the certificates the running revision needs into the gateway.
+    fn load_certificates(&mut self, log_notes: bool) {
+        self.cert_generation = self.certs.generation();
+        let (table, notes) = self.certs.table(&self.cert_specs);
+        if log_notes {
+            for note in notes {
+                warn!("{note}; serving a self-signed certificate for now");
+            }
+        }
+        self.gateway.certificates().set(table);
     }
 }

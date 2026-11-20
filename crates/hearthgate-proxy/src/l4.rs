@@ -173,7 +173,7 @@ struct Session {
 /// existing sessions.
 pub async fn run_udp(
     socket: Arc<UdpSocket>,
-    current: impl Fn() -> (Arc<Pool>, Arc<Limits>),
+    current: impl Fn() -> Option<(Arc<Pool>, Arc<Limits>)>,
     cancel: CancellationToken,
 ) {
     let mut sessions: HashMap<SocketAddr, Session> = HashMap::new();
@@ -219,7 +219,9 @@ pub async fn run_udp(
             continue;
         }
         warned_full = false;
-        let (pool, limits) = current();
+        let Some((pool, limits)) = current() else {
+            continue;
+        };
         let Some((upstream, state)) = open_session(&pool, peer).await else {
             debug!(route = %pool.route, client = %peer, "no UDP upstream available");
             continue;

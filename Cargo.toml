@@ -18,13 +18,21 @@ publish = false
 hearthgate-model = { path = "crates/hearthgate-model" }
 hearthgate-store = { path = "crates/hearthgate-store" }
 hearthgate-proxy = { path = "crates/hearthgate-proxy" }
+hearthgate-acme = { path = "crates/hearthgate-acme" }
 
 anyhow = "1"
 arc-swap = "1"
+bytes = "1"
 clap = { version = "4.5", features = ["derive", "env"] }
+http = "1"
+http-body-util = "0.1"
 humantime = "2"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
 humantime-serde = "1"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -34,8 +42,10 @@ tempfile = "3"
 thiserror = "2"
 toml = "0.9"
 tokio = { version = "1", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
+x509-parser = "0.18"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [workspace.lints.rust]
@@ -46,6 +56,12 @@ all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
+# Style-only pedantic lints that add noise without catching bugs here.
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+too_many_lines = "allow"
+similar_names = "allow"
+bool_to_int_with_if = "allow"
 
 [profile.release]
 opt-level = 3

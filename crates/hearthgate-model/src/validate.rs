@@ -249,7 +249,6 @@ impl DesiredState {
         }
     }
 
-    #[allow(clippy::too_many_lines)] // one pass over the rules for each listener mode
     fn validate_routes(&self, c: &mut Collector) {
         // (interface, listener, host, path) must be unique.
         let mut seen: BTreeSet<(&str, u16, String, &str)> = BTreeSet::new();
