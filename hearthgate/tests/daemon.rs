@@ -181,5 +181,5 @@ fn export_then_import_round_trips() {
     cli(&data, &["export", "-o", exported.to_str().unwrap()]);
     let out = cli(&data, &["import", exported.to_str().unwrap()]);
     assert!(out.contains("No changes"), "{out}");
-    assert!(cli(&data, &["revisions"]).lines().count() == 1);
+    assert_eq!(cli(&data, &["revisions"]).lines().count(), 1);
 }
