@@ -36,27 +36,36 @@ const RENEWAL_CHECK: Duration = Duration::from_secs(3600);
 
 /// Starts the gateway and blocks until it is told to stop.
 pub fn run(bootstrap: &Bootstrap) -> Result<std::process::ExitCode> {
-    init_logging(&bootstrap.log);
+    let logs = Arc::new(hearthgate_api::LogBuffer::default());
+    init_logging(&bootstrap.log, &logs);
     let runtime = tokio::runtime::Runtime::new().context("cannot start the async runtime")?;
-    runtime.block_on(serve(bootstrap.clone()))?;
+    runtime.block_on(serve(bootstrap.clone(), logs))?;
     Ok(std::process::ExitCode::SUCCESS)
 }
 
-fn init_logging(filter: &str) {
+fn init_logging(filter: &str, logs: &Arc<hearthgate_api::LogBuffer>) {
+    use tracing_subscriber::Layer as _;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
     let filter = EnvFilter::try_from_env("HEARTHGATE_LOG")
         .or_else(|_| EnvFilter::try_new(filter))
         .unwrap_or_else(|_| EnvFilter::new("info"));
     // journald adds its own timestamps.
     let under_systemd = std::env::var_os("JOURNAL_STREAM").is_some();
-    let builder = tracing_subscriber::fmt()
-        .with_env_filter(filter)
+    let fmt = tracing_subscriber::fmt::layer()
         .with_target(false)
         .with_ansi(!under_systemd);
-    let _ = if under_systemd {
-        builder.without_time().try_init()
+    let fmt = if under_systemd {
+        fmt.without_time().boxed()
     } else {
-        builder.try_init()
+        fmt.boxed()
     };
+    // The dashboard shows the same lines as the service log.
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt)
+        .with(hearthgate_api::LogLayer(Arc::clone(logs)))
+        .try_init();
 }
 
 /// Tells systemd about state changes. A no-op outside systemd.
@@ -64,7 +73,7 @@ fn notify(state: &[NotifyState<'_>]) {
     let _ = sd_notify::notify(false, state);
 }
 
-async fn serve(bootstrap: Bootstrap) -> Result<()> {
+async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Result<()> {
     info!("{}", crate::banner());
     let store = Arc::new(Store::open_dir(&bootstrap.data_dir).with_context(|| {
         format!(
@@ -101,33 +110,22 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
 
     let runtime = Arc::new(RwLock::new(RuntimeInfo::default()));
     let api_changed = Arc::new(Notify::new());
-    if !bootstrap.admin.listen.is_empty() {
-        let token = hearthgate_api::load_or_create_token(&bootstrap.data_dir)
-            .context("cannot read or create the admin token")?;
-        let api = ApiState {
-            store: Arc::clone(&store),
-            gateway: Arc::clone(&gateway),
-            certs: Arc::clone(&certs),
-            runtime: Arc::clone(&runtime),
-            changed: Arc::clone(&api_changed),
-            token: token.into(),
-            open_metrics: bootstrap.admin.metrics_without_token,
-        };
-        for addr in &bootstrap.admin.listen {
-            if addr.ip().is_unspecified() {
-                warn!(
-                    "admin API listens on {addr}; only clients in admin.allow can connect, but \
-                     binding the LAN or loopback address is safer"
-                );
-            }
-            let (api, allow, stop) = (api.clone(), bootstrap.admin.allow.clone(), stop.clone());
-            let addr = *addr;
-            tokio::spawn(async move {
-                if let Err(e) = hearthgate_api::serve(addr, allow, api, stop).await {
-                    error!("admin API cannot listen on {addr}: {e}");
-                }
-            });
-        }
+    let live = Arc::new(hearthgate_api::Live::new(logs));
+    hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
+    if bootstrap.admin.disabled() {
+        info!("admin API is off (admin.listen = [])");
+    } else {
+        start_admin(
+            &bootstrap,
+            &store,
+            &gateway,
+            &certs,
+            &runtime,
+            &api_changed,
+            &live,
+            &stop,
+        )
+        .await?;
     }
 
     let mut daemon = Daemon {
@@ -365,4 +363,99 @@ async fn acme_loop(
             () = tokio::time::sleep(next.max(Duration::from_secs(1))) => {}
         }
     }
+}
+
+/// Starts the dashboard and admin API on the configured or detected
+/// addresses.
+#[allow(clippy::too_many_arguments)]
+async fn start_admin(
+    bootstrap: &Bootstrap,
+    store: &Arc<Store>,
+    gateway: &Arc<Gateway>,
+    certs: &Arc<CertStore>,
+    runtime: &Arc<RwLock<RuntimeInfo>>,
+    changed: &Arc<Notify>,
+    live: &Arc<hearthgate_api::Live>,
+    stop: &CancellationToken,
+) -> Result<()> {
+    use hearthgate_api::access::{Resolved, Source, TlsMode};
+    let admin = &bootstrap.admin;
+    let token = hearthgate_api::load_or_create_token(&bootstrap.data_dir)
+        .context("cannot read or create the admin token")?;
+    let tls_mode = if admin.https {
+        match (&admin.certificate, &admin.private_key) {
+            (Some(cert), Some(key)) => {
+                let tls = hearthgate_api::tls::from_files(cert, key)
+                    .map_err(anyhow::Error::msg)
+                    .context("cannot use admin.certificate and admin.private_key")?;
+                info!(
+                    certificate = %tls.cert_path.display(),
+                    "dashboard certificate fingerprint (SHA-256): {}",
+                    tls.fingerprint
+                );
+                TlsMode::Fixed(Arc::new(tls))
+            }
+            (None, None) => TlsMode::SelfSigned(bootstrap.data_dir.clone()),
+            _ => anyhow::bail!("set both admin.certificate and admin.private_key, or neither"),
+        }
+    } else {
+        warn!("admin.https is off: the dashboard password travels unencrypted");
+        TlsMode::Off
+    };
+    let source = if admin.fixed() {
+        Source::Config(Resolved {
+            listen: admin.listen_or_default(),
+            allow: admin.allow_or_default(),
+        })
+    } else {
+        Source::Dashboard
+    };
+    let https = !matches!(tls_mode, TlsMode::Off);
+    let access = Arc::new(hearthgate_api::AccessControl::new(
+        source,
+        tls_mode,
+        stop.clone(),
+    ));
+    let api = ApiState {
+        store: Arc::clone(store),
+        gateway: Arc::clone(gateway),
+        certs: Arc::clone(certs),
+        runtime: Arc::clone(runtime),
+        changed: Arc::clone(changed),
+        token: token.into(),
+        open_metrics: admin.metrics_without_token,
+        secure_cookies: https,
+        auth: Arc::default(),
+        access: Arc::clone(&access),
+        live: Arc::clone(live),
+    };
+    let wanted = {
+        let store = Arc::clone(store);
+        let access = Arc::clone(&access);
+        tokio::task::spawn_blocking(move || access.wanted(&store))
+            .await
+            .context("cannot read the admin access settings")?
+    };
+    if wanted.listen.iter().all(|a| a.ip().is_loopback()) && !admin.fixed() {
+        warn!(
+            "no LAN address found: the dashboard is only reachable from this machine (or set \
+             admin.listen in the bootstrap file)"
+        );
+    }
+    access.start(api.router(), wanted).await;
+    if let Some(code) = hearthgate_api::setup_code(store)? {
+        let current = access.current();
+        let scheme = if https { "https" } else { "http" };
+        let addr = current
+            .listen
+            .iter()
+            .find(|a| !a.ip().is_loopback())
+            .or_else(|| current.listen.first());
+        let url = addr.map(|a| format!("{scheme}://{a}/")).unwrap_or_default();
+        info!(
+            "no dashboard account yet: open {url} and create one with setup code {code} \
+             (`hearthgate setup-code` shows it again)"
+        );
+    }
+    Ok(())
 }

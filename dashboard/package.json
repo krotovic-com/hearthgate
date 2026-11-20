@@ -1,0 +1,37 @@
+{
+  "name": "hearthgate-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Hearthgate's web dashboard. Built into dist/ and embedded in the hearthgate binary.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run check && npm run test:unit && npm run build && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/sora": "5.3.0",
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@testing-library/jest-dom": "8.0.0",
+    "@testing-library/svelte": "5.4.2",
+    "@tsconfig/svelte": "5.0.9",
+    "@types/node": "22.20.5",
+    "jsdom": "31.0.1",
+    "svelte": "5.59.0",
+    "svelte-check": "4.7.8",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  },
+  "dependencies": {
+    "uqr": "0.1.3"
+  }
+}

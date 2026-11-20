@@ -14,6 +14,17 @@ cargo build
 cargo run -- --help
 ```
 
+The dashboard needs Node.js 22. It is built into `dashboard/dist` and embedded in the binary; without a build, the binary serves a short "dashboard not included" page instead:
+
+```sh
+cd dashboard
+npm ci
+npm run build                  # then cargo build embeds it
+npm run dev                    # live-reloading UI against a running Hearthgate
+```
+
+`npm run dev` sends API calls to `https://127.0.0.1:7380`; point it elsewhere with `HEARTHGATE_URL`. Hearthgate's Content Security Policy allows no inline scripts or styles, so use classes, not `style` attributes.
+
 Hearthgate targets Linux only. You can develop on macOS or Windows (WSL), but parts that touch networking, the firewall or systemd will need a Linux machine or VM to run.
 
 ### Cross-compiling release binaries
@@ -39,7 +50,8 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-proxy` | Listeners, L4 and HTTP proxying, TLS, load balancing, metrics |
 | `crates/hearthgate-acme` | Certificate storage and ACME issuance |
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
-| `crates/hearthgate-api` | Admin REST API and OpenAPI document |
+| `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
+| `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |
 
 ### ACME tests
 
@@ -65,7 +77,10 @@ CI minutes are limited, so treat CI as the final check, not your test runner. Be
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
+cd dashboard && npm test       # if you touched the dashboard or the API
 ```
+
+`npm test` runs svelte-check, the component tests, a build, and the Playwright end-to-end tests, which start a real Hearthgate (built with `cargo build`) and check every page with axe for WCAG AA. Playwright needs Chromium: `npx playwright install chromium`.
 
 If you touched the build or release scripts, also run `scripts/build-release.sh 0.0.0-test` and `scripts/next-version.sh`. When CI does fail, fix everything it reports in one push rather than one failure at a time.
 

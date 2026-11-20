@@ -50,31 +50,74 @@ impl Default for Bootstrap {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Admin {
-    /// Addresses to listen on. Loopback only by default; add the server's
-    /// LAN address to reach it from other machines. Empty disables the API.
-    #[serde(default = "default_admin_listen")]
-    pub listen: Vec<SocketAddr>,
+    /// Addresses to listen on. When neither this nor `allow` is set,
+    /// Hearthgate listens on loopback and this machine's LAN addresses
+    /// (port 7380), and the dashboard can change that. Setting it here
+    /// fixes the list; empty disables the API.
+    #[serde(default)]
+    pub listen: Option<Vec<SocketAddr>>,
     /// Client ranges allowed to connect. Everyone else is disconnected
-    /// before anything is read, even if `listen` is misconfigured.
-    #[serde(default = "default_admin_allow")]
-    pub allow: Vec<IpNet>,
+    /// before anything is read, even if `listen` is misconfigured. When
+    /// unset, loopback and the LAN networks Hearthgate finds.
+    #[serde(default)]
+    pub allow: Option<Vec<IpNet>>,
     /// Serve `/metrics` without the admin token (still only to `allow`).
     #[serde(default)]
     pub metrics_without_token: bool,
+    /// Serve the dashboard and API over HTTPS. Turn off only behind another
+    /// TLS proxy on the same machine.
+    #[serde(default = "default_true")]
+    pub https: bool,
+    /// Certificate (PEM, full chain) for the dashboard, for example from an
+    /// internal CA. Without it, a self-signed one is made and kept.
+    #[serde(default)]
+    pub certificate: Option<PathBuf>,
+    /// Private key (PEM) for `certificate`.
+    #[serde(default)]
+    pub private_key: Option<PathBuf>,
 }
 
 impl Default for Admin {
     fn default() -> Self {
         Self {
-            listen: default_admin_listen(),
-            allow: default_admin_allow(),
+            listen: None,
+            allow: None,
             metrics_without_token: false,
+            https: true,
+            certificate: None,
+            private_key: None,
         }
     }
 }
 
 /// Default admin port.
 pub const ADMIN_PORT: u16 = 7380;
+
+impl Admin {
+    /// Whether the bootstrap file fixes the listen addresses or ranges.
+    #[must_use]
+    pub fn fixed(&self) -> bool {
+        self.listen.is_some() || self.allow.is_some()
+    }
+
+    /// Whether the admin API is turned off (`listen = []`).
+    #[must_use]
+    pub fn disabled(&self) -> bool {
+        self.listen.as_ref().is_some_and(Vec::is_empty)
+    }
+
+    /// Listen addresses, with the default for an unset value.
+    #[must_use]
+    pub fn listen_or_default(&self) -> Vec<SocketAddr> {
+        self.listen.clone().unwrap_or_else(default_admin_listen)
+    }
+
+    /// Allowed ranges, with the default for an unset value.
+    #[must_use]
+    pub fn allow_or_default(&self) -> Vec<IpNet> {
+        self.allow.clone().unwrap_or_else(default_admin_allow)
+    }
+}
 
 fn default_admin_listen() -> Vec<SocketAddr> {
     vec![SocketAddr::from(([127, 0, 0, 1], ADMIN_PORT))]

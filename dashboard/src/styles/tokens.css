@@ -1,0 +1,86 @@
+/*
+ * Design tokens from the Figma file "Hearthgate — Brand & UI Kit"
+ * (variable collections Primitives, Color, Dimension; text styles).
+ * Names match the Figma variables: color/text/primary → --hg-color-text-primary.
+ * Keep this file in sync with Figma rather than adding one-off values.
+ */
+:root {
+  /* Primitives */
+  --hg-ink-900: #0e1a2b;
+  --hg-ink-800: #16263d;
+  --hg-ink-700: #22344f;
+  --hg-ink-500: #5a6b85;
+  --hg-ink-400: #8a9bb8;
+  --hg-ink-200: #c9d3e3;
+  --hg-ink-100: #e3e8f0;
+  --hg-ink-50: #f6f8fb;
+  --hg-white: #ffffff;
+  --hg-route-950: #14244f;
+  --hg-route-600: #2a57d6;
+  --hg-route-500: #3b6ef5;
+  --hg-route-400: #6a93ff;
+  --hg-route-100: #dce6ff;
+  --hg-tunnel-900: #0f3b33;
+  --hg-tunnel-600: #1a9e7f;
+  --hg-tunnel-500: #2bc6a0;
+  --hg-tunnel-100: #d5f5ec;
+  --hg-amber-900: #3d2a0c;
+  --hg-amber-600: #b57614;
+  --hg-amber-500: #f2a93b;
+  --hg-amber-100: #fdefd6;
+  --hg-red-900: #3f1316;
+  --hg-red-600: #c93439;
+  --hg-red-500: #e5484d;
+  --hg-red-100: #fce1e2;
+
+  /* Color (light mode) */
+  --hg-color-bg-canvas: var(--hg-ink-50);
+  --hg-color-bg-surface: var(--hg-white);
+  --hg-color-bg-subtle: var(--hg-ink-100);
+  --hg-color-bg-inverse: var(--hg-ink-900);
+  --hg-color-border-default: var(--hg-ink-100);
+  --hg-color-border-strong: var(--hg-ink-200);
+  --hg-color-border-focus: var(--hg-route-400);
+  --hg-color-text-primary: var(--hg-ink-900);
+  --hg-color-text-secondary: var(--hg-ink-500);
+  --hg-color-text-on-accent: var(--hg-white);
+  --hg-color-text-link: var(--hg-route-600);
+  --hg-color-text-inverse: var(--hg-ink-50);
+  --hg-color-accent-default: var(--hg-route-500);
+  --hg-color-accent-hover: var(--hg-route-600);
+  --hg-color-accent-subtle: var(--hg-route-100);
+  --hg-color-status-healthy-fg: var(--hg-tunnel-600);
+  --hg-color-status-healthy-bg: var(--hg-tunnel-100);
+  --hg-color-status-warning-fg: var(--hg-amber-600);
+  --hg-color-status-warning-bg: var(--hg-amber-100);
+  --hg-color-status-critical-fg: var(--hg-red-600);
+  --hg-color-status-critical-bg: var(--hg-red-100);
+  --hg-color-status-neutral-fg: var(--hg-ink-500);
+  --hg-color-status-neutral-bg: var(--hg-ink-100);
+  /* Text on the status backgrounds. The Figma foregrounds are kept for
+     dots, icons and lines; text uses these darker shades to reach the
+     4.5:1 contrast WCAG AA asks for. */
+  --hg-color-status-healthy-text: #0f6e58;
+  --hg-color-status-warning-text: #8a5a0f;
+  --hg-color-status-critical-text: #a8282d;
+  --hg-color-status-neutral-text: #4a5a72;
+
+  /* Dimension */
+  --hg-spacing-2xs: 2px;
+  --hg-spacing-xs: 4px;
+  --hg-spacing-sm: 8px;
+  --hg-spacing-md: 12px;
+  --hg-spacing-lg: 16px;
+  --hg-spacing-xl: 24px;
+  --hg-spacing-2xl: 32px;
+  --hg-spacing-3xl: 48px;
+  --hg-radius-sm: 4px;
+  --hg-radius-md: 8px;
+  --hg-radius-lg: 12px;
+  --hg-radius-full: 999px;
+
+  /* Typography */
+  --hg-font-display: 'Sora', system-ui, sans-serif;
+  --hg-font-body: 'Inter', system-ui, sans-serif;
+  --hg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
