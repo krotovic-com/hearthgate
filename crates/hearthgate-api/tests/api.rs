@@ -575,12 +575,13 @@ async fn two_factor_login_and_password_change() {
     .await;
     // (One in a million chance that 000000 is the current code.)
     assert_eq!(wrong.status, 422);
+    let first_code = totp_now(&secret);
     let enable = request(
         api.port,
         "POST",
         "/api/v1/auth/totp/enable",
         &auth,
-        Some(json!({ "secret": secret, "code": totp_now(&secret) })),
+        Some(json!({ "secret": secret, "code": first_code })),
     )
     .await;
     assert_eq!(enable.status, 204, "{}", enable.body);
@@ -597,8 +598,8 @@ async fn two_factor_login_and_password_change() {
     let needs_code = login(None).await;
     assert_eq!(needs_code.status, 401);
     assert_eq!(needs_code.json()["totp_required"], true);
-    // The code used to turn it on cannot be replayed.
-    assert_eq!(login(Some(totp_now(&secret))).await.status, 401);
+    // The code used to turn it on cannot be replayed, even in a later step.
+    assert_eq!(login(Some(first_code)).await.status, 401);
 
     // Changing the password ends other sessions but keeps this one.
     let other = {
