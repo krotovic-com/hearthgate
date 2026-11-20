@@ -1,0 +1,80 @@
+# Example Hearthgate desired state.
+#
+# Load it with `hearthgate apply state.toml`. Every apply is stored as a
+# numbered revision: `hearthgate revisions` lists them, `hearthgate rollback N`
+# goes back, and `hearthgate export` prints the current state in this format.
+
+[acme]
+email = "admin@example.com"
+# Agree to the certificate authority's terms of service.
+accept_terms = true
+# Use Let's Encrypt staging while testing; remove for real certificates.
+staging = true
+
+# A website with automatic HTTPS. Port 80 redirects to 443 and answers ACME
+# HTTP-01 challenges.
+[[interfaces]]
+name = "web"
+domains = ["app.example.com"]
+listeners = [
+  { port = 80, mode = "http" },
+  { port = 443, mode = "https" },
+]
+
+# SSH on a non-standard public port.
+[[interfaces]]
+name = "ssh"
+listeners = [{ port = 2222, mode = "raw" }]
+
+# A WireGuard or game server on UDP.
+[[interfaces]]
+name = "game"
+listeners = [{ port = 27015, mode = "raw", protocol = "both" }]
+
+[[services]]
+name = "app-1"
+kind = "external"
+host = "10.0.0.11"
+ports = { http = 8080 }
+health = { type = "http", path = "/healthz", interval = "5s" }
+
+[[services]]
+name = "app-2"
+kind = "external"
+host = "10.0.0.12"
+ports = { http = 8080 }
+health = { type = "http", path = "/healthz", interval = "5s" }
+
+[[services]]
+name = "sshd"
+kind = "external"
+host = "127.0.0.1"
+ports = { ssh = 22 }
+
+[[services]]
+name = "game-server"
+kind = "docker"
+container = "game"
+ports = { game = 27015 }
+
+# Two targets: requests are load-balanced across both app servers.
+[[routes]]
+name = "app"
+interface = "web"
+listener = 443
+targets = [
+  { service = "app-1", port = "http" },
+  { service = "app-2", port = "http" },
+]
+
+[[routes]]
+name = "ssh"
+interface = "ssh"
+listener = 2222
+targets = [{ service = "sshd", port = "ssh" }]
+
+[[routes]]
+name = "game"
+interface = "game"
+listener = 27015
+targets = [{ service = "game-server", port = "game" }]

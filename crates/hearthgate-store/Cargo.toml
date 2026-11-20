@@ -1,0 +1,23 @@
+[package]
+name = "hearthgate-store"
+description = "Hearthgate desired-state storage: SQLite, revisions and migrations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+hearthgate-model.workspace = true
+humantime.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

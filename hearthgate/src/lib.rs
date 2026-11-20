@@ -1,7 +1,12 @@
 //! Hearthgate: a secure-by-default gateway for home servers.
 //!
-//! This crate is at the skeleton stage. Proxying, certificates, the VPN,
-//! the firewall and the dashboard land in later releases.
+//! This crate is the `hearthgate` binary: the command line, the bootstrap
+//! settings and the daemon that wires the subsystems together. The
+//! subsystems themselves live in the `hearthgate-*` crates.
+
+pub mod cli;
+pub mod config;
+pub mod daemon;
 
 /// Version of this build.
 ///
