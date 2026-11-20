@@ -50,6 +50,8 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-proxy` | Listeners, L4 and HTTP proxying, TLS, load balancing, metrics |
 | `crates/hearthgate-acme` | Certificate storage and ACME issuance |
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
+| `crates/hearthgate-firewall` | nftables ruleset, safe apply, blocklist feeds and automatic bans |
+| `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
 | `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |
 
@@ -64,6 +66,17 @@ cargo test -p hearthgate-acme --test pebble
 ```
 
 They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
+
+### Firewall tests
+
+`crates/hearthgate-firewall/tests/netns.rs` builds three network namespaces (outside, this host, LAN), loads real rulesets and scans the host from outside. It never touches your own host's rules, but it needs root, `ip` (iproute2) and `nft`, and is skipped without them. Run it with:
+
+```sh
+cargo test -p hearthgate-firewall --test netns --no-run
+sudo -E env "PATH=$PATH" cargo test -p hearthgate-firewall --test netns
+```
+
+The dashboard has one more end-to-end test, skipped by default, that turns the firewall on for real and checks that the dashboard confirms the change. Run it only as root in a throwaway machine or container: `HEARTHGATE_E2E_FIREWALL=1 npm run test:e2e`.
 
 ### Docker discovery
 

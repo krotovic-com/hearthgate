@@ -48,6 +48,7 @@ export interface StatusResponse {
   upstreams: UpstreamStatus[];
   problems: string[];
   host: HostInfo;
+  firewall?: { installed: boolean; pending: PendingInfo | null };
 }
 
 // Desired state, as in the OpenAPI document. Optional fields are filled
@@ -70,6 +71,8 @@ export interface Interface {
   listeners: Listener[];
   bind?: string[];
   certificate?: string | null;
+  /** New connections per second from one client, enforced by the firewall. */
+  rate_limit?: number | null;
 }
 
 export interface HealthCheck {
@@ -119,12 +122,94 @@ export interface AcmeSettings {
   renew_before?: string;
 }
 
+export type RuleAction = 'allow' | 'deny';
+
+export interface FirewallRule {
+  name: string;
+  action: RuleAction;
+  /** Networks such as "203.0.113.0/24". Empty means any source. */
+  sources?: string[];
+  /** Ports (numbers) or ranges ("8000-8100"). Empty means every port. */
+  ports?: (number | string)[];
+  protocol?: Protocol;
+  comment?: string;
+}
+
+export interface Blocklist {
+  name: string;
+  url: string;
+  /** For example "12h". */
+  refresh?: string;
+  enabled?: boolean;
+}
+
+export interface AutoBan {
+  enabled: boolean;
+  threshold: number;
+  window: string;
+  ban_time: string;
+}
+
+export interface FirewallSettings {
+  enabled: boolean;
+  allow_lan: boolean;
+  allow_ping: boolean;
+  allow_docker_ports: boolean;
+  rules?: FirewallRule[];
+  allow?: string[];
+  block?: string[];
+  blocklists?: Blocklist[];
+  countries?: string[];
+  auto_ban: AutoBan;
+}
+
+export interface RouterSettings {
+  upnp: boolean;
+}
+
 export interface DesiredState {
   interfaces?: Interface[];
   services?: Service[];
   routes?: Route[];
   acme?: AcmeSettings;
   limits?: Record<string, string | number>;
+  firewall?: FirewallSettings;
+  router?: RouterSettings;
+}
+
+export interface PendingInfo {
+  revision: number;
+  seconds_left: number;
+}
+
+export interface FirewallInfo {
+  installed: boolean;
+  error: string | null;
+  pending: PendingInfo | null;
+  dropped: { total: number; blocklist: number; ban: number; policy: number; ratelimit: number };
+  feed_entries: number;
+  feeds: { name: string; entries: number; updated: number | null; error: string | null }[];
+  bans: { address: string; seconds_left: number }[];
+}
+
+export interface RecentDrop {
+  source: string;
+  protocol: string;
+  port: number;
+  reason: 'blocklist' | 'ban' | 'policy' | 'rate-limit' | string;
+  packets: number;
+  last_seen_secs: number;
+}
+
+export interface RouterInfo {
+  enabled: boolean;
+  method: 'upnp' | 'nat-pmp' | null;
+  router: string | null;
+  local_ip: string | null;
+  public_ip: string | null;
+  double_nat: boolean;
+  mappings: { port: number; protocol: string; active: boolean; error: string | null }[];
+  error: string | null;
 }
 
 export interface RevisionInfo {
@@ -299,4 +384,11 @@ export const api = {
   tokens: () => request<ApiTokenInfo[]>('GET', '/api/v1/tokens'),
   createToken: (name: string) => request<CreatedToken>('POST', '/api/v1/tokens', { name }),
   deleteToken: (id: number) => request<void>('DELETE', `/api/v1/tokens/${id}`),
+  firewall: () => request<FirewallInfo>('GET', '/api/v1/firewall'),
+  recentDrops: () => request<RecentDrop[]>('GET', '/api/v1/firewall/recent'),
+  confirmFirewall: () => request<void>('POST', '/api/v1/firewall/confirm'),
+  ban: (address: string, duration?: string) =>
+    request<void>('POST', '/api/v1/firewall/bans', { address, duration: duration || null }),
+  unban: (address: string) => request<void>('DELETE', `/api/v1/firewall/bans/${encodeURIComponent(address)}`),
+  router: () => request<RouterInfo>('GET', '/api/v1/router'),
 };

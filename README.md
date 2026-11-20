@@ -28,13 +28,13 @@ Available now:
 - **Every change is a revision.** Apply a file, see the diff, roll back. Changes take effect within a second without dropping open connections.
 - **Dashboard.** A web UI, reachable only from your LAN over HTTPS, with live health and traffic, a draft-review-apply flow with diffs, history and rollback, two-factor login and API tokens.
 - **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks, and Prometheus metrics.
+- **Firewall and blocklists.** An nftables firewall that closes every port no public interface opens, with your own rules, subscribed blocklists, country blocking, per-interface rate limits and automatic bans for clients that probe or fail to log in. Changes that would lock you out undo themselves after 60 seconds.
+- **Router port forwarding.** Optionally keeps your router's port forwards (UPnP or NAT-PMP) in line with your public interfaces, and warns about double NAT.
 
 Coming next:
 
 - **Managed Docker.** Docker containers and stacks that Hearthgate starts and updates for you.
 - **Built-in VPN.** Peers reach every internal service, published or not, with internal DNS at `name.home.internal`.
-- **Firewall and blocklists.** Unexposed ports stay closed, and known-bad sources are blocked.
-- **UPnP.** Optionally opens and closes router ports to match your public interfaces.
 - **Optional AI assistant.** Bring your own provider (Claude, Gemini, OpenAI, Ollama and others) to review rules and troubleshoot services. Suggestions always wait for your approval, and logs are redacted before they leave the machine.
 
 ## Install

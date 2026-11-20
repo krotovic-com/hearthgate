@@ -36,6 +36,11 @@ impl Lab {
         let ip = Command::new("ip").arg("-V").output().is_ok();
         let nft = Command::new("nft").arg("-v").output().is_ok();
         if !(root && ip && nft) {
+            // CI sets this, so a broken setup fails instead of passing quietly.
+            assert!(
+                std::env::var_os("HEARTHGATE_NETNS_TESTS").is_none(),
+                "HEARTHGATE_NETNS_TESTS is set, but root, iproute2 or nftables is missing"
+            );
             eprintln!("skipping: needs root, iproute2 and nftables");
             return None;
         }

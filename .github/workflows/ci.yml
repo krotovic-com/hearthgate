@@ -42,6 +42,16 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      # The firewall tests build network namespaces and load real nftables
+      # rulesets, so they skip without root. Run them again as root (only
+      # the test binary, so the build output stays owned by the runner).
+      - name: Firewall tests in network namespaces
+        run: |
+          sudo apt-get install -y --no-install-recommends nftables iproute2
+          cargo test --locked -p hearthgate-firewall --test netns
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
+          HEARTHGATE_NETNS_TESTS: '1'
 
   dashboard:
     name: dashboard (svelte-check, unit, end-to-end)

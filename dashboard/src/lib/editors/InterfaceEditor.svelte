@@ -28,6 +28,7 @@
   let rows = $state<Row[]>([]);
   let certificate = $state('');
   let bind = $state('');
+  let rateLimit = $state('');
   let acceptTerms = $state(false);
   let email = $state('');
   let tried = $state(false);
@@ -45,6 +46,7 @@
     ]).map((l) => ({ port: String(l.port), mode: l.mode, protocol: l.protocol ?? 'tcp' }));
     certificate = i?.certificate ?? '';
     bind = (i?.bind ?? []).join(', ');
+    rateLimit = i?.rate_limit ? String(i.rate_limit) : '';
     acceptTerms = gw.draft.acme?.accept_terms ?? false;
     email = gw.draft.acme?.email ?? '';
     tried = false;
@@ -67,7 +69,11 @@
   );
   const manualCerts = $derived(gw.certificates.filter((c) => c.source === 'manual'));
   const needsTerms = $derived(usesHttps && !certificate && !acceptTerms);
+  const rateError = $derived(
+    rateLimit.trim() === '' || /^[1-9]\d{0,5}$/.test(rateLimit.trim()) ? null : 'Use a whole number above 0, or leave it empty.',
+  );
   const valid = $derived(
+    !rateError &&
     !nameError && portErrors.every((e) => !e) && !duplicate && rows.length > 0 && !needsDomains && !needsTerms,
   );
   const renamedWithRoutes = $derived(
@@ -96,6 +102,7 @@
         .sort((a, b) => a.port - b.port),
       bind: list(bind),
       certificate: certificate || null,
+      ...(rateLimit.trim() ? { rate_limit: Number(rateLimit) } : {}),
     };
     edit((s) => {
       const at = s.interfaces.findIndex((i) => i.name === original?.name);
@@ -207,6 +214,15 @@
       mono
       placeholder="All addresses"
       hint="Local addresses to listen on. Leave empty to listen on every address."
+    />
+    <TextField
+      label="Rate limit"
+      bind:value={rateLimit}
+      mono
+      inputmode="numeric"
+      placeholder="No limit"
+      hint="New connections a second from one client address, across these ports. The firewall drops the rest."
+      error={tried ? rateError : null}
     />
   </details>
 

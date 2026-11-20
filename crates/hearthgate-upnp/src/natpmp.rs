@@ -11,10 +11,13 @@ use crate::{Error, Protocol};
 /// The NAT-PMP port on the gateway.
 pub const PORT: u16 = 5351;
 
-/// The IPv4 default gateway, from `/proc/net/route`.
+/// The IPv4 default gateway, from the routing table (`/proc/self/net/route`
+/// still works when systemd hides the rest of `/proc`).
 #[must_use]
 pub fn default_gateway() -> Option<Ipv4Addr> {
-    let text = std::fs::read_to_string("/proc/net/route").ok()?;
+    let text = std::fs::read_to_string("/proc/self/net/route")
+        .or_else(|_| std::fs::read_to_string("/proc/net/route"))
+        .ok()?;
     parse_route_table(&text)
 }
 

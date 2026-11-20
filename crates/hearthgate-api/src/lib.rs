@@ -170,26 +170,36 @@ pub(crate) async fn accept_loop(
             drop(stream);
             continue;
         }
+        // Lets a request end its own connection (see
+        // `firewall::close_while_pending`).
+        let close = CancellationToken::new();
         let app = app
             .clone()
             .layer(axum::Extension(auth::ClientAddr(peer)))
             .layer(axum::Extension(firewall::Accepted(
                 std::time::Instant::now(),
-            )));
+            )))
+            .layer(axum::Extension(firewall::CloseConnection(close.clone())));
         let tls = tls.read().unwrap_or_else(PoisonError::into_inner).clone();
         let stop = stop.clone();
         tokio::spawn(async move {
             if let Some(tls) = tls {
-                serve_tls(stream, app, &tls, stop).await;
+                serve_tls(stream, app, &tls, stop, close).await;
             } else {
-                serve_connection(stream, app, stop).await;
+                serve_connection(stream, app, stop, close).await;
             }
         });
     }
 }
 
 /// Answers TLS clients, and redirects plain HTTP clients on the same port.
-async fn serve_tls(stream: TcpStream, app: Router, tls: &AdminTls, cancel: CancellationToken) {
+async fn serve_tls(
+    stream: TcpStream,
+    app: Router,
+    tls: &AdminTls,
+    cancel: CancellationToken,
+    close: CancellationToken,
+) {
     let mut first = [0u8; 1];
     match tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.peek(&mut first)).await {
         Ok(Ok(1)) => {}
@@ -197,19 +207,32 @@ async fn serve_tls(stream: TcpStream, app: Router, tls: &AdminTls, cancel: Cance
     }
     // 0x16 starts a TLS handshake record.
     if first[0] != 0x16 {
-        serve_connection(stream, Router::new().fallback(redirect_to_https), cancel).await;
+        serve_connection(
+            stream,
+            Router::new().fallback(redirect_to_https),
+            cancel,
+            close,
+        )
+        .await;
         return;
     }
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::clone(&tls.config));
     match tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
-        Ok(Ok(stream)) => serve_connection(stream, app, cancel).await,
+        Ok(Ok(stream)) => serve_connection(stream, app, cancel, close).await,
         Ok(Err(e)) => debug!("admin TLS handshake failed: {e}"),
         Err(_) => debug!("admin TLS handshake timed out"),
     }
 }
 
-async fn serve_connection<I>(io: I, app: Router, cancel: CancellationToken)
-where
+/// Serves one connection until it ends or `cancel` fires. `close` ends it
+/// gracefully: requests in flight finish, and HTTP/2 clients get a GOAWAY,
+/// so their next request opens a new connection.
+async fn serve_connection<I>(
+    io: I,
+    app: Router,
+    cancel: CancellationToken,
+    close: CancellationToken,
+) where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let service = TowerToHyperService::new(app);
@@ -221,8 +244,16 @@ where
     let conn = builder.serve_connection_with_upgrades(TokioIo::new(io), service);
     tokio::pin!(conn);
     tokio::select! {
+        _ = conn.as_mut() => return,
+        () = cancel.cancelled() => {
+            conn.as_mut().graceful_shutdown();
+            return;
+        }
+        () = close.cancelled() => conn.as_mut().graceful_shutdown(),
+    }
+    tokio::select! {
         _ = conn.as_mut() => {}
-        () = cancel.cancelled() => conn.as_mut().graceful_shutdown(),
+        () = cancel.cancelled() => {}
     }
 }
 

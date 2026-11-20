@@ -151,9 +151,9 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 - **Firewall** with nftables in a dedicated `inet hearthgate` table, so it never touches rules the user or Docker manages. Default policy for inbound: drop, except declared public ports, the admin listener from allowed ranges, and established traffic. Applied atomically from the desired state with a "safe apply" that rolls back automatically if the admin can't confirm within 60 seconds (protects against locking yourself out).
 - Rule editor for allow and deny by source, port and protocol, plus per-interface rate limits (connections per second per source).
-- **Blocklists**: subscribe to feeds (for example Spamhaus DROP, FireHOL level 1, abuse.ch), refreshed on a schedule into nftables interval sets. Country blocking with an optional GeoIP database. Manual block and allow lists.
+- **Blocklists**: subscribe to feeds (for example Spamhaus DROP, FireHOL level 1, abuse.ch), refreshed on a schedule into nftables interval sets. Country blocking from published per-country address lists (ipdeny.com). Manual block and allow lists.
 - **Automatic bans**: the proxy reports abuse signals (repeated 4xx on auth paths, TLS handshake floods, scan patterns) and offenders get temporary bans, similar to fail2ban but built in.
-- **UPnP** with `igd-next` (and NAT-PMP or PCP where available), off by default. When enabled, router port mappings follow public interfaces: added on create, renewed before the lease ends, removed on delete and on shutdown. Shows the detected public IP and warns about double NAT or CGNAT.
+- **UPnP** with a small built-in UPnP IGD and NAT-PMP client, off by default. When enabled, router port mappings follow public interfaces: added on create, renewed before the lease ends, removed on delete and on shutdown. Shows the detected public IP and warns about double NAT or CGNAT.
 - Dashboard: **Firewall** screen (rules, blocklists, recent blocks), Settings → Router.
 
 ### Milestones

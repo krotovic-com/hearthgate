@@ -3,12 +3,14 @@
   import General from './settings/General.svelte';
   import Access from './settings/Access.svelte';
   import Certificates from './settings/Certificates.svelte';
+  import Router from './settings/Router.svelte';
   import Account from './settings/Account.svelte';
 
   const sections = [
     { id: 'general', label: 'General' },
     { id: 'access', label: 'Dashboard access' },
     { id: 'certificates', label: 'Certificates' },
+    { id: 'router', label: 'Router' },
     { id: 'account', label: 'Account' },
   ];
   let active = $state('general');
@@ -38,6 +40,7 @@
     <General />
     <Access />
     <Certificates />
+    <Router />
     <Account />
   </div>
 </div>

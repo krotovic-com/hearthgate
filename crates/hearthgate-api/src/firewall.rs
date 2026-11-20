@@ -18,6 +18,10 @@ use crate::routes::ApiError;
 #[derive(Debug, Clone, Copy)]
 pub struct Accepted(pub Instant);
 
+/// Ends the connection carrying a request, once the requests on it finish.
+#[derive(Debug, Clone)]
+pub struct CloseConnection(pub tokio_util::sync::CancellationToken);
+
 /// Firewall overview.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FirewallInfo {
@@ -254,7 +258,23 @@ pub(crate) async fn close_while_pending(
     request: Request,
     next: Next,
 ) -> Response {
-    let pending = state.perimeter.pending().is_some();
+    let pending = state.perimeter.pending();
+    // A connection from before the change does not show that the new rules
+    // let this client in. Browsers keep connections open and send every
+    // request over one HTTP/2 connection, where `Connection: close` means
+    // nothing, so end old connections: the next request opens a new one.
+    if let Some(p) = &pending {
+        let old = request
+            .extensions()
+            .get::<Accepted>()
+            .is_some_and(|a| a.0 <= p.applied_at);
+        if old {
+            if let Some(close) = request.extensions().get::<CloseConnection>() {
+                close.0.cancel();
+            }
+        }
+    }
+    let pending = pending.is_some();
     let mut response = next.run(request).await;
     if pending
         && !response

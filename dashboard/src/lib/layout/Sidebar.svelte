@@ -6,13 +6,14 @@
 
   let { status }: { status: StatusResponse | null } = $props();
 
-  // Sections that exist in this release. VPN peers, Firewall and AI review
-  // join the list in the releases that add them.
+  // Sections that exist in this release. VPN peers and AI review join the
+  // list in the releases that add them.
   const items: { href: string; label: string; icon: IconName }[] = [
     { href: '/', label: 'Overview', icon: 'overview' },
     { href: '/interfaces', label: 'Public interfaces', icon: 'globe' },
     { href: '/services', label: 'Services', icon: 'server' },
     { href: '/routes', label: 'Routes', icon: 'route' },
+    { href: '/firewall', label: 'Firewall', icon: 'firewall' },
     { href: '/history', label: 'History', icon: 'arrow' },
     { href: '/settings', label: 'Settings', icon: 'settings' },
   ];

@@ -119,6 +119,56 @@ test.describe.serial('dashboard', () => {
     await eventually(async () => (await visit()).status === 200, 'the rollback to apply');
   });
 
+  test('firewall rules and blocklists go through the draft', async ({ page }) => {
+    await login(page);
+    await page.getByRole('link', { name: 'Firewall', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'The firewall is off' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Add rule' }).click();
+    const rule = page.getByRole('dialog', { name: 'Add a firewall rule' });
+    await rule.getByLabel('Name').fill('ssh-from-office');
+    await rule.getByLabel('From').fill('192.0.2.0/24, 198.51.100.7');
+    await rule.getByLabel('Ports').fill('22');
+    await rule.getByRole('button', { name: 'Add to draft' }).click();
+    await expect(page.getByText('From 192.0.2.0/24, 198.51.100.7 to 22/tcp')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Blocklists', exact: true }).click();
+    const lists = page.getByRole('dialog', { name: 'Blocklists' });
+    await lists.getByRole('button', { name: 'Add firehol-level1' }).click();
+    await lists.getByLabel('Countries').fill('xx, YY');
+    await lists.getByRole('button', { name: 'Save to draft' }).click();
+    await expect(page.getByText('firehol-level1 · countries XX, YY')).toBeVisible();
+
+    await applyDraft(page, 'ssh-from-office');
+    // Stored as the server normalizes it, and the draft is clean again.
+    await expect(page.getByRole('button', { name: 'Review and apply' })).toBeHidden();
+    await expect(page.getByText('From 192.0.2.0/24, 198.51.100.7 to 22/tcp')).toBeVisible();
+
+    // Router port forwarding is a draft change too.
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByRole('switch', { name: 'Forward ports automatically' }).click();
+    await expect(page.getByText('Turn on router port forwarding')).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+  });
+
+  // Installs a real nftables ruleset, so it only runs when asked for (as
+  // root, in a throwaway machine or container).
+  test('a firewall change is kept once the dashboard confirms it', async ({ page }) => {
+    test.skip(process.env.HEARTHGATE_E2E_FIREWALL !== '1', 'set HEARTHGATE_E2E_FIREWALL=1 to run');
+    await login(page);
+    await page.getByRole('link', { name: 'Firewall', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn on the firewall' }).click();
+    await applyDraft(page, 'enabled = true');
+    await expect(page.getByText('Firewall change confirmed')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Deny all')).toBeVisible();
+    await page.screenshot({ path: 'test-results/firewall-on.png', fullPage: true });
+    // Still reachable and still on after the confirmation window.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Firewall', level: 1 })).toBeVisible();
+    await page.getByRole('switch', { name: 'Firewall' }).click();
+    await applyDraft(page, 'enabled = false');
+  });
+
   test('every page passes WCAG AA checks', async ({ page }) => {
     await login(page);
     for (const [link, heading] of [
@@ -126,6 +176,7 @@ test.describe.serial('dashboard', () => {
       ['Public interfaces', 'Public interfaces'],
       ['Services', 'Services'],
       ['Routes', 'Routes'],
+      ['Firewall', 'Firewall'],
       ['History', 'History'],
       ['Settings', 'Settings'],
     ]) {
@@ -135,6 +186,13 @@ test.describe.serial('dashboard', () => {
     }
     await page.getByRole('link', { name: 'Public interfaces', exact: true }).click();
     await page.getByRole('button', { name: /^Edit/ }).first().click();
+    await accessible(page);
+    await page.keyboard.press('Escape');
+    await page.getByRole('link', { name: 'Firewall', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit ssh-from-office' }).click();
+    await accessible(page);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Blocklists', exact: true }).click();
     await accessible(page);
   });
 

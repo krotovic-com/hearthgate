@@ -69,6 +69,7 @@
       { label: 'Certificate', value: certificateText(iface) },
       { label: 'Ports', value: iface.listeners.map((l) => `${portLabel(l.port, l.protocol)} ${modeLabels[l.mode]}`).join(', ') },
       ...(iface.bind?.length ? [{ label: 'Bound to', value: iface.bind.join(', ') }] : []),
+      ...(iface.rate_limit ? [{ label: 'Rate limit', value: `${iface.rate_limit} new connections a second per client` }] : []),
     ];
   }
 

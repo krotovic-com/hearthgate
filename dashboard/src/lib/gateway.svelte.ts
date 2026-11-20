@@ -9,7 +9,9 @@ import {
   type RevisionInfo,
   type Route,
   type Service,
+  type FirewallSettings,
 } from './api';
+import { canonical, compact, withDefaults } from './firewall';
 
 export interface Gateway {
   loaded: boolean;
@@ -51,10 +53,16 @@ export const draft = {
   get routes(): Route[] {
     return gw.draft.routes ?? [];
   },
+  get firewall(): Required<FirewallSettings> {
+    return withDefaults(gw.draft.firewall);
+  },
+  get upnp(): boolean {
+    return gw.draft.router?.upnp ?? false;
+  },
 };
 
 export function isDirty(): boolean {
-  return JSON.stringify(complete(gw.draft)) !== JSON.stringify(complete(gw.current));
+  return canonical(complete(gw.draft)) !== canonical(complete(gw.current));
 }
 
 export async function loadGateway(): Promise<void> {
@@ -86,7 +94,22 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   next.interfaces.sort(byName);
   next.services.sort(byName);
   next.routes.sort(byName);
+  // Stored as the server stores them, so an unchanged draft compares equal.
+  const fw = next.firewall ? compact(withDefaults(next.firewall)) : undefined;
+  if (fw) next.firewall = fw;
+  else delete next.firewall;
+  if (!next.router?.upnp) delete next.router;
+  for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
+}
+
+/** Changes the draft's firewall settings. */
+export function editFirewall(change: (fw: Required<FirewallSettings>) => void): void {
+  edit((s) => {
+    const fw = withDefaults(s.firewall);
+    change(fw);
+    s.firewall = fw;
+  });
 }
 
 export function discard(): void {
@@ -129,15 +152,44 @@ export function draftSummary(): string[] {
     ['routes', 'route'],
   ] as const;
   for (const [key, label] of kinds) {
-    const before = new Map(cur[key].map((x) => [x.name, JSON.stringify(x)]));
-    const after = new Map(next[key].map((x) => [x.name, JSON.stringify(x)]));
+    const before = new Map(cur[key].map((x) => [x.name, canonical(x)]));
+    const after = new Map(next[key].map((x) => [x.name, canonical(x)]));
     for (const [name, json] of after) {
       if (!before.has(name)) out.push(`Add ${label} ${name}`);
       else if (before.get(name) !== json) out.push(`Change ${label} ${name}`);
     }
     for (const name of before.keys()) if (!after.has(name)) out.push(`Remove ${label} ${name}`);
   }
-  if (JSON.stringify(cur.acme ?? {}) !== JSON.stringify(next.acme ?? {})) out.push('Change certificate settings');
-  if (JSON.stringify(cur.limits ?? {}) !== JSON.stringify(next.limits ?? {})) out.push('Change limits');
+  if (canonical(cur.acme ?? {}) !== canonical(next.acme ?? {})) out.push('Change certificate settings');
+  if (canonical(cur.limits ?? {}) !== canonical(next.limits ?? {})) out.push('Change limits');
+  out.push(...firewallSummary(withDefaults(cur.firewall), withDefaults(next.firewall)));
+  if ((cur.router?.upnp ?? false) !== (next.router?.upnp ?? false)) {
+    out.push(next.router?.upnp ? 'Turn on router port forwarding' : 'Turn off router port forwarding');
+  }
+  return out;
+}
+
+function firewallSummary(cur: Required<FirewallSettings>, next: Required<FirewallSettings>): string[] {
+  const out: string[] = [];
+  if (cur.enabled !== next.enabled) out.push(next.enabled ? 'Turn on the firewall' : 'Turn off the firewall');
+  const before = new Map(cur.rules.map((r) => [r.name, canonical(r)]));
+  const after = new Map(next.rules.map((r) => [r.name, canonical(r)]));
+  for (const [name, json] of after) {
+    if (!before.has(name)) out.push(`Add firewall rule ${name}`);
+    else if (before.get(name) !== json) out.push(`Change firewall rule ${name}`);
+  }
+  for (const name of before.keys()) if (!after.has(name)) out.push(`Remove firewall rule ${name}`);
+  const order = (rules: { name: string }[], names: Map<string, string>) =>
+    rules.filter((r) => names.has(r.name)).map((r) => r.name).join();
+  if (out.length === 0 && order(cur.rules, after) !== order(next.rules, before)) out.push('Reorder firewall rules');
+  if (canonical(cur.blocklists) !== canonical(next.blocklists) || canonical(cur.countries) !== canonical(next.countries)) {
+    out.push('Change blocklists');
+  }
+  if (canonical(cur.allow) !== canonical(next.allow) || canonical(cur.block) !== canonical(next.block)) {
+    out.push('Change allowed and blocked addresses');
+  }
+  const general = (f: Required<FirewallSettings>) =>
+    canonical([f.allow_lan, f.allow_ping, f.allow_docker_ports, f.auto_ban]);
+  if (general(cur) !== general(next)) out.push('Change firewall settings');
   return out;
 }
