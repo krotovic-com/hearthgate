@@ -15,7 +15,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** early development. The current releases contain the project skeleton only. Nothing is proxied or exposed yet.
+> **Status:** early development. The current releases contain the project skeleton only. Nothing is proxied or exposed yet. See the [roadmap](docs/ROADMAP.md) for what lands in each release.
 
 ## What it will do
 
