@@ -5,9 +5,11 @@
 //! subsystems themselves live in the `hearthgate-*` crates.
 
 pub mod cli;
+mod cli_docker;
 mod cli_vpn;
 pub mod config;
 pub mod daemon;
+pub mod docker;
 pub mod firewall;
 pub mod vpn;
 

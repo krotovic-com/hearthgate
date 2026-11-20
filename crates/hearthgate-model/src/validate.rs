@@ -91,6 +91,7 @@ impl DesiredState {
         self.validate_routes(&mut c);
         self.validate_firewall(&mut c);
         self.validate_vpn(&mut c);
+        self.validate_docker(&mut c);
         if c.0.is_empty() {
             Ok(())
         } else {
@@ -241,6 +242,76 @@ impl DesiredState {
                     "dns.upstream",
                     format!("`{upstream}` is not an address, like 1.1.1.1 or 192.168.1.1:53"),
                 );
+            }
+        }
+    }
+
+    fn validate_docker(&self, c: &mut Collector) {
+        let mut names = BTreeSet::new();
+        for container in &self.containers {
+            let path = format!("containers[{}]", container.name);
+            if !is_valid_name(&container.name) {
+                c.push(&path, format!("invalid name: {NAME_RULE}"));
+            }
+            if !names.insert(container.name.as_str()) {
+                c.push(&path, "name is used more than once");
+            }
+            if container.image.is_empty() || container.image.contains(char::is_whitespace) {
+                c.push(&path, "image: use a reference such as nginx:1.27");
+            }
+            for key in container.env.keys() {
+                if !crate::is_env_name(key) {
+                    c.push(&path, format!("env: `{key}` is not a variable name"));
+                }
+            }
+            for volume in &container.volumes {
+                if crate::Volume::parse(volume).is_none() {
+                    c.push(
+                        &path,
+                        format!(
+                            "volumes: `{volume}` is not /host/path:/path[:ro] or name:/path[:ro]"
+                        ),
+                    );
+                }
+            }
+            for publish in &container.publish {
+                match crate::Publish::parse(publish) {
+                    None => c.push(
+                        &path,
+                        format!("publish: `{publish}` is not [address:]host:container[/udp]"),
+                    ),
+                    Some(p) => {
+                        let taken = self.interfaces.iter().any(|i| {
+                            i.listeners
+                                .iter()
+                                .any(|l| l.port == p.host && if p.udp { l.udp() } else { l.tcp() })
+                        });
+                        if taken {
+                            c.push(
+                                &path,
+                                format!("publish: port {} is used by a public interface", p.host),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let mut stacks = BTreeSet::new();
+        for stack in &self.stacks {
+            let path = format!("stacks[{}]", stack.name);
+            if !is_valid_name(&stack.name) {
+                c.push(&path, format!("invalid name: {NAME_RULE}"));
+            }
+            if !stacks.insert(stack.name.as_str()) {
+                c.push(&path, "name is used more than once");
+            }
+            if stack.compose.trim().is_empty() {
+                c.push(&path, "compose: the Compose file is empty");
+            }
+            for key in stack.env.keys() {
+                if !crate::is_env_name(key) {
+                    c.push(&path, format!("env: `{key}` is not a variable name"));
+                }
             }
         }
     }

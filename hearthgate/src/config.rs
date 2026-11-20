@@ -149,6 +149,10 @@ pub struct Docker {
     /// Path of the Docker socket.
     #[serde(default = "default_docker_socket")]
     pub socket: PathBuf,
+    /// Run the containers and stacks of the desired state. Off: Hearthgate
+    /// only follows existing containers.
+    #[serde(default = "default_true")]
+    pub manage: bool,
 }
 
 impl Default for Docker {
@@ -156,6 +160,7 @@ impl Default for Docker {
         Self {
             enabled: true,
             socket: default_docker_socket(),
+            manage: true,
         }
     }
 }

@@ -38,7 +38,10 @@ use crate::auth::Principal;
         crate::account::create_token, crate::account::delete_token,
         crate::firewall::info, crate::firewall::recent, crate::firewall::confirm,
         crate::firewall::ban, crate::firewall::unban, crate::firewall::router,
-        crate::vpn::info, crate::vpn::peer_config
+        crate::vpn::info, crate::vpn::peer_config,
+        crate::docker::info, crate::docker::restart, crate::docker::update_container,
+        crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
+        crate::docker::updates
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -56,7 +59,7 @@ use crate::auth::Principal;
         crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
         crate::firewall::RouterInfo, crate::firewall::MappingInfo,
         crate::vpn::VpnInfo, crate::vpn::VpnPeerInfo, crate::vpn::DnsName, crate::vpn::PeerConfigRequest,
-        crate::vpn::PeerConfigResponse
+        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo
     )),
     modifiers(&Security),
     tags(
@@ -64,7 +67,8 @@ use crate::auth::Principal;
         (name = "auth", description = "Dashboard login and API tokens"),
         (name = "settings", description = "Settings kept outside the desired state"),
         (name = "firewall", description = "Firewall status, bans and change confirmation"),
-        (name = "vpn", description = "VPN status and new peer configurations")
+        (name = "vpn", description = "VPN status and new peer configurations"),
+        (name = "docker", description = "Managed containers and stacks")
     )
 )]
 pub struct ApiDoc;
@@ -120,6 +124,28 @@ pub fn router(state: ApiState) -> Router {
             get(crate::access::get_access).put(crate::access::put_access),
         )
         .route("/api/v1/vpn", get(crate::vpn::info))
+        .route("/api/v1/docker", get(crate::docker::info))
+        .route("/api/v1/docker/updates", get(crate::docker::updates))
+        .route(
+            "/api/v1/docker/containers/{name}/restart",
+            post(crate::docker::restart),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/update",
+            post(crate::docker::update_container),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/logs",
+            get(crate::docker::logs),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/stats",
+            get(crate::docker::stats),
+        )
+        .route(
+            "/api/v1/docker/stacks/{name}/update",
+            post(crate::docker::update_stack),
+        )
         .route("/api/v1/vpn/peer-config", post(crate::vpn::peer_config))
         .route("/api/v1/firewall", get(crate::firewall::info))
         .route("/api/v1/router", get(crate::firewall::router))

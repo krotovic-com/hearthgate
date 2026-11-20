@@ -77,6 +77,7 @@ async fn start(options: Options) -> Api {
             hearthgate_vpn::Device::new("hgtest-none", hearthgate_vpn::Tools::default()),
             Some(dir.path().join("vpn")),
         )),
+        docker: Arc::default(),
     };
     let listener = TcpListener::bind(options.bind).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -820,6 +821,7 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         )),
         router: Arc::default(),
         vpn: Arc::default(),
+        docker: Arc::default(),
     };
     let first = free_port();
     access
@@ -1134,5 +1136,25 @@ async fn vpn_status_and_new_peer_configs() {
     ] {
         let (status, body) = ask(bad).await;
         assert_eq!(status, 422, "{why}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn docker_endpoints_without_docker() {
+    let api = start(LOCAL).await;
+    let (status, body) = call(api.port, "GET", "/api/v1/docker", Some(TOKEN), None).await;
+    assert_eq!(status, 200, "{body}");
+    let info = json_of(&body);
+    assert_eq!(info["enabled"], false);
+    assert_eq!(info["containers"], json!([]));
+    for (method, path, want) in [
+        ("POST", "/api/v1/docker/containers/web/restart", 404),
+        ("POST", "/api/v1/docker/containers/web/update", 404),
+        ("POST", "/api/v1/docker/stacks/notes/update", 404),
+        ("GET", "/api/v1/docker/containers/web/logs?tail=5", 404),
+        ("GET", "/api/v1/docker/updates", 503),
+    ] {
+        let (status, body) = call(api.port, method, path, Some(TOKEN), None).await;
+        assert_eq!(status, want, "{method} {path}: {body}");
     }
 }

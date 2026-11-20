@@ -23,6 +23,7 @@ hearthgate-api = { path = "crates/hearthgate-api" }
 hearthgate-firewall = { path = "crates/hearthgate-firewall" }
 hearthgate-upnp = { path = "crates/hearthgate-upnp" }
 hearthgate-vpn = { path = "crates/hearthgate-vpn" }
+hearthgate-docker = { path = "crates/hearthgate-docker" }
 
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }

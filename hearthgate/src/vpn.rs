@@ -24,6 +24,8 @@ pub struct VpnCtl {
     applied: Option<Plan>,
     checked_at: Instant,
     state: DesiredState,
+    /// For letting VPN traffic through Docker's forward chain.
+    nft: hearthgate_firewall::Nft,
 }
 
 impl VpnCtl {
@@ -36,6 +38,7 @@ impl VpnCtl {
                 applied: None,
                 checked_at: Instant::now(),
                 state: DesiredState::default(),
+                nft: hearthgate_firewall::Nft::default(),
             },
             rx,
         )
@@ -49,6 +52,7 @@ impl VpnCtl {
         containers: &dyn ContainerLookup,
     ) -> Option<VpnPolicy> {
         self.state = state.clone();
+        self.docker_forwarding().await;
         if !state.vpn.enabled {
             if self.applied.take().is_some() || self.runtime.device.exists().await {
                 if let Err(e) = self.runtime.device.remove().await {
@@ -176,12 +180,27 @@ impl VpnCtl {
             return false;
         }
         self.checked_at = Instant::now();
+        // Docker may have started (or restarted) since.
+        self.docker_forwarding().await;
         if self.applied.is_some() && !self.runtime.device.exists().await {
             warn!("the VPN interface disappeared; setting it up again");
             self.applied = None;
             return true;
         }
         false
+    }
+
+    /// Docker drops forwarded packets it doesn't know about, which would
+    /// keep peers from the LAN and from containers.
+    async fn docker_forwarding(&self) {
+        let interface = self
+            .state
+            .vpn
+            .enabled
+            .then_some(self.runtime.device.name.as_str());
+        if let Err(e) = self.nft.docker_user(interface).await {
+            warn!("cannot let VPN traffic through Docker's forward chain: {e}");
+        }
     }
 
     /// Takes the interface down when Hearthgate stops.
@@ -250,6 +269,13 @@ async fn resolve(
                     out.insert(service.name.clone(), ips);
                 }
             }
+        }
+    }
+    // Managed containers get names too, as `container:NAME`.
+    for container in &state.containers {
+        if let Some(ip) = containers.container_ip(&container.name, Some(hearthgate_docker::NETWORK))
+        {
+            out.insert(format!("container:{}", container.name), vec![ip]);
         }
     }
     out

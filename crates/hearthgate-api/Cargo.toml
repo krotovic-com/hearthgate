@@ -13,6 +13,7 @@ hearthgate-acme.workspace = true
 hearthgate-firewall.workspace = true
 hearthgate-upnp.workspace = true
 hearthgate-vpn.workspace = true
+hearthgate-docker.workspace = true
 hearthgate-model = { workspace = true, features = ["openapi"] }
 hearthgate-proxy.workspace = true
 hearthgate-store.workspace = true

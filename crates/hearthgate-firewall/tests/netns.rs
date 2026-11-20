@@ -369,3 +369,52 @@ async fn a_large_feed_loads_quickly() {
     eprintln!("loaded 100,000 ranges in {took:?}");
     assert!(took < Duration::from_secs(10), "{took:?}");
 }
+
+#[tokio::test]
+async fn vpn_traffic_passes_dockers_forward_chain() {
+    let Some(lab) = Lab::new("du") else { return };
+    let nft = lab.nft();
+    // No Docker: nothing to do.
+    assert!(!nft.docker_user(Some("hearthgate")).await.unwrap());
+    // What Docker sets up: a FORWARD chain that drops, and DOCKER-USER first.
+    nft.apply(
+        "table ip filter {\n chain DOCKER-USER {\n }\n chain FORWARD {\n  type filter hook forward priority filter; policy drop;\n  jump DOCKER-USER\n }\n}\n",
+    )
+    .await
+    .unwrap();
+    let list = || {
+        let out = Command::new("ip")
+            .args([
+                "netns",
+                "exec",
+                &lab.host,
+                "nft",
+                "list",
+                "chain",
+                "ip",
+                "filter",
+                "DOCKER-USER",
+            ])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    assert!(nft.docker_user(Some("hearthgate")).await.unwrap());
+    let rules = list();
+    assert!(rules.contains("iifname \"hearthgate\" accept"), "{rules}");
+    assert!(
+        rules.contains("oifname \"hearthgate\" ct state established,related accept"),
+        "{rules}"
+    );
+    // Idempotent, and follows a renamed interface.
+    nft.docker_user(Some("hearthgate")).await.unwrap();
+    assert_eq!(list().matches("hearthgate").count(), 4, "{}", list());
+    nft.docker_user(Some("wg9")).await.unwrap();
+    let rules = list();
+    assert!(
+        rules.contains("iifname \"wg9\"") && !rules.contains("iifname \"hearthgate\""),
+        "{rules}"
+    );
+    nft.docker_user(None).await.unwrap();
+    assert!(!list().contains("comment \"hearthgate\""), "{}", list());
+}

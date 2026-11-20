@@ -369,3 +369,57 @@ fn vpn_is_checked() {
         "used by a public interface",
     );
 }
+
+#[test]
+fn containers_and_stacks_are_checked() {
+    let ok = r#"
+[[containers]]
+name = "whoami"
+image = "traefik/whoami:v1.10"
+env = { TZ = "Europe/Prague" }
+volumes = ["/srv/whoami:/data:ro", "cache:/cache"]
+publish = ["127.0.0.1:8081:80"]
+
+[[stacks]]
+name = "notes"
+compose = "services:\n  app:\n    image: nginx\n"
+running = false
+"#;
+    assert!(messages(ok).is_empty(), "{:?}", messages(ok));
+    let state = DesiredState::from_toml(ok).unwrap();
+    assert!(state.containers[0].running);
+    assert!(!state.stacks[0].running);
+    let exported = state.to_toml();
+    assert!(!exported.contains("running = true"), "{exported}");
+    assert_eq!(DesiredState::from_toml(&exported).unwrap(), state);
+
+    assert_problem(
+        "[[containers]]\nname = \"Bad\"\nimage = \"x\"\n",
+        "invalid name",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"has space\"\n",
+        "image",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\nenv = { \"A-B\" = \"1\" }\n",
+        "not a variable name",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\nvolumes = [\"./x:/y\"]\n",
+        "volumes",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\npublish = [\"80\"]\n",
+        "publish",
+    );
+    assert_problem(
+        "[[interfaces]]\nname = \"web\"\nlisteners = [{ port = 8080, mode = \"raw\" }]\n[[containers]]\nname = \"a\"\nimage = \"x\"\npublish = [\"8080:80\"]\n",
+        "used by a public interface",
+    );
+    assert_problem("[[stacks]]\nname = \"s\"\ncompose = \" \"\n", "empty");
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\n[[containers]]\nname = \"a\"\nimage = \"y\"\n",
+        "more than once",
+    );
+}

@@ -9,6 +9,7 @@
 pub mod access;
 mod account;
 mod auth;
+pub mod docker;
 pub mod firewall;
 pub mod live;
 mod ratelimit;
@@ -88,6 +89,8 @@ pub struct ApiState {
     /// Router port forwarding state.
     pub router: Arc<hearthgate_upnp::Router>,
     pub vpn: Arc<hearthgate_vpn::Runtime>,
+    /// Managed containers and stacks.
+    pub docker: Arc<hearthgate_docker::Manager>,
 }
 
 impl ApiState {

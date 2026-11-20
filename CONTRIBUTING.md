@@ -52,6 +52,7 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
 | `crates/hearthgate-firewall` | nftables ruleset, safe apply, blocklist feeds and automatic bans |
 | `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
+| `crates/hearthgate-docker` | Managed containers and Compose stacks |
 | `crates/hearthgate-vpn` | WireGuard interface, keys, peer configs and the internal DNS server |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
 | `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |
@@ -67,6 +68,10 @@ cargo test -p hearthgate-acme --test pebble
 ```
 
 They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
+
+### Docker tests
+
+`crates/hearthgate-docker/tests/docker.rs` creates, recreates and removes real containers and a Compose stack (all named `hgtest-…`), and is skipped when Docker or the `busybox:1.36` image isn't available. It needs the Docker daemon, the Compose plugin and access to `/var/run/docker.sock`: `cargo test -p hearthgate-docker --test docker`.
 
 ### Firewall and VPN tests
 

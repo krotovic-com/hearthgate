@@ -29,6 +29,10 @@ metrics_without_token = false
 # private_key = "/etc/hearthgate/dashboard.key"
 
 [docker]
-# Read-only discovery of containers for `kind = "docker"` services.
+# Find containers for `kind = "docker"` services, and run the containers and
+# stacks of the desired state. Needs access to the Docker socket, which is
+# equivalent to root: see SupplementaryGroups in the systemd unit.
 enabled = true
 socket = "/var/run/docker.sock"
+# Only follow existing containers; never create, change or remove any.
+# manage = false

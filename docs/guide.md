@@ -126,7 +126,7 @@ container = "nextcloud"
 ports = { http = 80 }
 ```
 
-For `docker` services Hearthgate reads the container's address from Docker and follows restarts and network changes. It only reads: it never starts, stops or changes containers. To allow it, uncomment `SupplementaryGroups=docker` in the systemd unit. Access to the Docker socket is equivalent to root access on the host.
+For `docker` services Hearthgate reads the container's address from Docker and follows restarts and network changes. To allow it, uncomment `SupplementaryGroups=docker` in the systemd unit. Access to the Docker socket is equivalent to root access on the host.
 
 **Health checks** are optional. `type = "tcp"` connects, `type = "http"` sends a GET to `path` and expects a 2xx or 3xx status.
 
@@ -139,6 +139,49 @@ For `docker` services Hearthgate reads the container's address from Docker and f
 | `port` | every port routes use | Port to check, by name or number |
 
 Independently of health checks, an upstream that refuses 3 connections in a row sits out for 10 seconds. If every target of a route is down, Hearthgate still tries them, so a broken health check cannot take a route offline on its own.
+
+### Containers and stacks
+
+Hearthgate can also run containers for you, replacing tools like Portainer for a typical home server:
+
+```toml
+[[containers]]
+name = "whoami"                    # its name in Docker and in the internal DNS
+image = "traefik/whoami:v1.10"
+# running = true
+# command = ["--port", "8080"]
+env = { TZ = "Europe/Prague" }
+volumes = ["/srv/whoami:/data", "whoami-cache:/cache:ro"]
+# publish = ["127.0.0.1:8081:80"]  # host ports; rarely needed
+# restart = "unless-stopped"       # or "always", "on-failure", "no"
+
+[[stacks]]
+name = "notes"                     # the Compose project name
+env = { POSTGRES_PASSWORD = "change-me" }   # written to the stack's .env
+compose = """
+services:
+  app:
+    image: ghcr.io/example/notes:2
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: ["db:/var/lib/postgresql/data"]
+volumes:
+  db: {}
+"""
+```
+
+Containers and the containers of stacks join a Docker network called `hearthgate`. Hearthgate reaches them there, so to publish one, add a `docker` service with `network = "hearthgate"` and a route, with no host ports published. The dashboard's Add container form can add that service for you. Stack containers are named `STACK-SERVICE-1`, such as `notes-app-1`.
+
+- A changed container is recreated; one removed from the state is removed (its volumes stay). A container that exits on its own is left to its restart policy.
+- Stacks run with the `docker compose` command (install the Compose plugin), from files Hearthgate keeps in `/var/lib/hearthgate/stacks/NAME`. Removing a stack runs `docker compose down`, which keeps named volumes.
+- Hearthgate never touches containers it didn't create. If a container with the same name already exists, it reports a problem instead.
+- Images are pulled when missing. **Update** in the dashboard (or `hearthgate docker update NAME`) pulls the newest image and recreates the container if it changed. **Check for updates** asks the registries without changing anything; nothing is ever updated without you asking.
+- Containers, Logs shows a container's output with search, CPU, memory and restarts.
+- VPN devices reach containers too: devices with full access reach the `hearthgate` network, and managed containers get names like `whoami.home.internal`.
+
+To only follow existing containers and never create any, set `docker.manage = false` in the bootstrap file; `docker.enabled = false` turns Docker off entirely.
 
 ### Routes
 
@@ -318,6 +361,10 @@ drain_timeout = "30s"           # removed listeners and shutdown
 | `hearthgate vpn enable [--endpoint HOST]`, `hearthgate vpn disable` | Turn the VPN on or off as a new revision |
 | `hearthgate vpn add NAME [--access all\|SVC,SVC] [-o FILE]` | Add a device and print its configuration and QR code once |
 | `hearthgate vpn remove NAME` | Remove a device; it can't connect any more |
+| `hearthgate docker status` | Managed containers and stacks |
+| `hearthgate docker logs NAME [-n N]` | A managed container's recent output |
+| `hearthgate docker update NAME` | Pull the newest image of a container or stack and recreate it if it changed |
+| `hearthgate docker check-updates` | Whether newer images exist, without changing anything |
 | `hearthgate openapi` | Print the admin API's OpenAPI document |
 
 `--data-dir` (or `HEARTHGATE_DATA_DIR`) points any command at another data directory, which is handy for trying things out without root.
@@ -350,6 +397,9 @@ curl --cacert /var/lib/hearthgate/admin-tls/cert.pem \
 | `POST /api/v1/firewall/confirm` | Keep a waiting firewall change (only over a connection opened after the change) |
 | `POST /api/v1/firewall/bans`, `DELETE /api/v1/firewall/bans/{address}` | Ban or unban an address |
 | `GET /api/v1/router` | Router port forwarding status |
+| `GET /api/v1/docker`, `GET /api/v1/docker/updates` | Managed containers and stacks, and image update checks |
+| `POST /api/v1/docker/containers/{name}/restart`, `…/update`, `POST /api/v1/docker/stacks/{name}/update` | Restart, or pull and recreate |
+| `GET /api/v1/docker/containers/{name}/logs`, `…/stats` | Output (with `tail` and `search`) and resource use |
 | `GET /api/v1/vpn` | VPN state, devices with their last handshake and traffic, and the internal DNS names |
 | `POST /api/v1/vpn/peer-config` | Keys and configuration for a new device. Nothing is stored: add the returned public key to the state |
 | `/api/v1/auth/…`, `/api/v1/tokens` | Login, password, two-factor login and API tokens |

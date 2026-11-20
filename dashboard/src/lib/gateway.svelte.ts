@@ -10,6 +10,8 @@ import {
   type Route,
   type Service,
   type FirewallSettings,
+  type ManagedContainer,
+  type Stack,
 } from './api';
 import { canonical, compact, withDefaults } from './firewall';
 import { compactDns, compactVpn, dnsWithDefaults, vpnWithDefaults, type FullDns, type FullVpn } from './vpn';
@@ -39,9 +41,17 @@ export const gw = $state<Gateway>({
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 /** Fills every list so the editors never deal with missing arrays. */
-function complete(state: DesiredState): Required<Pick<DesiredState, 'interfaces' | 'services' | 'routes'>> &
-  DesiredState {
-  return { ...state, interfaces: state.interfaces ?? [], services: state.services ?? [], routes: state.routes ?? [] };
+function complete(
+  state: DesiredState,
+): Required<Pick<DesiredState, 'interfaces' | 'services' | 'routes' | 'containers' | 'stacks'>> & DesiredState {
+  return {
+    ...state,
+    interfaces: state.interfaces ?? [],
+    services: state.services ?? [],
+    routes: state.routes ?? [],
+    containers: state.containers ?? [],
+    stacks: state.stacks ?? [],
+  };
 }
 
 export const draft = {
@@ -59,6 +69,12 @@ export const draft = {
   },
   get upnp(): boolean {
     return gw.draft.router?.upnp ?? false;
+  },
+  get containers(): ManagedContainer[] {
+    return gw.draft.containers ?? [];
+  },
+  get stacks(): Stack[] {
+    return gw.draft.stacks ?? [];
   },
   get vpn(): FullVpn {
     return vpnWithDefaults(gw.draft.vpn);
@@ -101,6 +117,13 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   next.interfaces.sort(byName);
   next.services.sort(byName);
   next.routes.sort(byName);
+  // Containers and stacks as the server stores them: defaults left out.
+  const containers = (next.containers ?? []).map(compactContainer).sort(byName);
+  if (containers.length) next.containers = containers;
+  else delete (next as DesiredState).containers;
+  const stacks = (next.stacks ?? []).map(compactStack).sort(byName);
+  if (stacks.length) next.stacks = stacks;
+  else delete (next as DesiredState).stacks;
   // Stored as the server stores them, so an unchanged draft compares equal.
   const fw = next.firewall ? compact(withDefaults(next.firewall)) : undefined;
   if (fw) next.firewall = fw;
@@ -114,6 +137,24 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   else delete next.dns;
   for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
+}
+
+function compactContainer(c: ManagedContainer): ManagedContainer {
+  const out: ManagedContainer = { ...c };
+  if (out.running !== false) delete out.running;
+  if (!out.command?.length) delete out.command;
+  if (!out.env || !Object.keys(out.env).length) delete out.env;
+  if (!out.volumes?.length) delete out.volumes;
+  if (!out.publish?.length) delete out.publish;
+  if (!out.restart || out.restart === 'unless-stopped') delete out.restart;
+  return out;
+}
+
+function compactStack(s: Stack): Stack {
+  const out: Stack = { ...s };
+  if (out.running !== false) delete out.running;
+  if (!out.env || !Object.keys(out.env).length) delete out.env;
+  return out;
 }
 
 /** Changes the draft's firewall settings. */
@@ -174,6 +215,8 @@ export function draftSummary(): string[] {
     ['interfaces', 'public interface'],
     ['services', 'service'],
     ['routes', 'route'],
+    ['containers', 'container'],
+    ['stacks', 'stack'],
   ] as const;
   for (const [key, label] of kinds) {
     const before = new Map(cur[key].map((x) => [x.name, canonical(x)]));

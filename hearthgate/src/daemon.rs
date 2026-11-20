@@ -120,6 +120,19 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         hearthgate_vpn::Device::new(hearthgate_vpn::INTERFACE, hearthgate_vpn::Tools::default()),
         Some(bootstrap.data_dir.join("vpn")),
     ));
+    let docker_manager = Arc::new(hearthgate_docker::Manager::new(
+        (bootstrap.docker.enabled && bootstrap.docker.manage)
+            .then_some(bootstrap.docker.socket.as_path()),
+        &bootstrap.data_dir,
+    ));
+    let (docker_state, docker_rx) = watch::channel(None);
+    if docker_manager.enabled() {
+        tokio::spawn(crate::docker::run(
+            Arc::clone(&docker_manager),
+            docker_rx,
+            stop.clone(),
+        ));
+    }
     hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
     let access = if bootstrap.admin.disabled() {
         info!("admin API is off (admin.listen = [])");
@@ -137,6 +150,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
                 &perimeter,
                 &router,
                 &vpn_runtime,
+                &docker_manager,
                 &stop,
             )
             .await?,
@@ -198,6 +212,8 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         acme: acme_tx,
         acme_problems,
         containers: containers.clone(),
+        docker: docker_manager,
+        docker_state,
         runtime,
         cert_generation: String::new(),
         cert_specs: Vec::new(),
@@ -278,6 +294,9 @@ struct Daemon {
     /// Latest ACME failure per interface.
     acme_problems: Arc<Mutex<BTreeMap<String, String>>>,
     containers: Containers,
+    docker: Arc<hearthgate_docker::Manager>,
+    /// The state the Docker task works towards.
+    docker_state: watch::Sender<Option<Arc<DesiredState>>>,
     runtime: Arc<RwLock<RuntimeInfo>>,
     /// Last seen certificate store generation.
     cert_generation: String,
@@ -327,6 +346,15 @@ impl Daemon {
         self.cert_specs.clone_from(&plan.certs);
         self.load_certificates();
         let errors = self.gateway.apply(&plan).await;
+        self.docker_state.send_if_modified(|current| {
+            let changed = current
+                .as_ref()
+                .is_none_or(|c| c.containers != state.containers || c.stacks != state.stacks);
+            if changed {
+                *current = Some(Arc::new(state.clone()));
+            }
+            changed
+        });
         self.firewall.vpn = self.vpn.reconcile(&state, &self.containers).await;
         self.firewall
             .reconcile(&state, id, self.applied.is_none())
@@ -386,6 +414,7 @@ impl Daemon {
         let mut problems = self.bind_errors.clone();
         problems.extend(self.firewall.problem.iter().cloned());
         problems.extend(self.vpn.problems());
+        problems.extend(self.docker.status().problems);
         problems.extend(self.cert_notes.iter().cloned());
         problems.extend(
             self.acme_problems
@@ -501,6 +530,7 @@ async fn start_admin(
     perimeter: &Arc<hearthgate_firewall::Perimeter>,
     router: &Arc<hearthgate_upnp::Router>,
     vpn: &Arc<hearthgate_vpn::Runtime>,
+    docker: &Arc<hearthgate_docker::Manager>,
     stop: &CancellationToken,
 ) -> Result<Arc<hearthgate_api::AccessControl>> {
     use hearthgate_api::access::{Resolved, Source, TlsMode};
@@ -556,6 +586,7 @@ async fn start_admin(
         perimeter: Arc::clone(perimeter),
         router: Arc::clone(router),
         vpn: Arc::clone(vpn),
+        docker: Arc::clone(docker),
     };
     let wanted = {
         let store = Arc::clone(store);

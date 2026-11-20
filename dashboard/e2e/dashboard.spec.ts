@@ -207,6 +207,50 @@ test.describe.serial('dashboard', () => {
     await expect(page.getByText('No devices yet')).toBeVisible();
   });
 
+  test('containers and stacks go through the draft', async ({ page }) => {
+    await login(page);
+    await page.getByRole('link', { name: 'Containers', exact: true }).click();
+    // The test server runs without Docker.
+    await expect(page.getByText('Managed Docker is off.')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Add container' }).click();
+    const editor = page.getByRole('dialog', { name: 'Add a container' });
+    await editor.getByLabel('Image').fill('ghcr.io/example/whoami:v1.10');
+    await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('whoami');
+    await editor.getByLabel('Environment variables').fill('TZ=Europe/Prague\nbad line');
+    await editor.getByLabel('Volumes').fill('/srv/whoami:/data:ro');
+    await editor.getByRole('button', { name: 'Add to draft' }).click();
+    await expect(editor.getByText('"bad line" is not KEY=value.')).toBeVisible();
+    await editor.getByLabel('Environment variables').fill('TZ=Europe/Prague');
+    await editor.getByLabel('Port inside the container').fill('8080');
+    await accessible(page);
+    await editor.getByRole('button', { name: 'Add to draft' }).click();
+    const row = page.getByRole('listitem').filter({ hasText: 'example/whoami' });
+    await expect(row.getByText('Not applied')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Add stack' }).click();
+    const stack = page.getByRole('dialog', { name: 'Add a stack' });
+    await stack.getByLabel('Name', { exact: true }).fill('notes');
+    await stack.getByLabel('Compose file').fill('services:\n  app:\n    image: nginx:1.27\n');
+    await stack.getByLabel('Variables (.env)').fill('PASSWORD=secret');
+    await accessible(page);
+    await stack.getByRole('button', { name: 'Add to draft' }).click();
+    await expect(page.getByText('Not applied yet', { exact: true })).toBeVisible();
+
+    // The container comes with a service a route can use.
+    await expect(page.getByText('Add container whoami')).toBeVisible();
+    await expect(page.getByText('Add service whoami')).toBeVisible();
+    await expect(page.getByText('Add stack notes')).toBeVisible();
+    await accessible(page);
+    await page.getByRole('button', { name: 'Review and apply' }).click();
+    const review = page.getByRole('dialog', { name: 'Review changes' });
+    await expect(review.getByLabel('Changes', { exact: true })).toContainText('image = "ghcr.io/example/whoami:v1.10"');
+    await expect(review.getByLabel('Changes', { exact: true })).toContainText('network = "hearthgate"');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByText('No containers yet')).toBeVisible();
+  });
+
   // Installs a real nftables ruleset, so it only runs when asked for (as
   // root, in a throwaway machine or container).
   test('a firewall change is kept once the dashboard confirms it', async ({ page }) => {
@@ -231,6 +275,7 @@ test.describe.serial('dashboard', () => {
       ['Overview', 'Overview'],
       ['Public interfaces', 'Public interfaces'],
       ['Services', 'Services'],
+      ['Containers', 'Containers'],
       ['Routes', 'Routes'],
       ['VPN peers', 'VPN peers'],
       ['Firewall', 'Firewall'],

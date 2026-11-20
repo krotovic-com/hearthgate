@@ -21,6 +21,7 @@ hearthgate-api.workspace = true
 hearthgate-firewall.workspace = true
 hearthgate-upnp.workspace = true
 hearthgate-vpn.workspace = true
+hearthgate-docker.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 clap.workspace = true

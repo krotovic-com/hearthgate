@@ -1,5 +1,6 @@
 //! Runs the `nft` tool and reads its JSON output.
 
+use std::fmt::Write as _;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -110,6 +111,55 @@ impl Nft {
             let err = String::from_utf8_lossy(&output.stderr);
             Err(NftError::Refused(trim_error(&err)))
         }
+    }
+
+    /// Lets VPN traffic through Docker's `DOCKER-USER` chain, which
+    /// otherwise drops forwarded packets on hosts that run Docker. With
+    /// `None`, removes those rules. Returns whether Docker's chain exists.
+    pub async fn docker_user(&self, interface: Option<&str>) -> Result<bool, NftError> {
+        const COMMENT: &str = "comment \"hearthgate\"";
+        let Ok(listing) = self
+            .run(
+                &["-a", "list", "chain", "ip", "filter", "DOCKER-USER"],
+                None,
+            )
+            .await
+        else {
+            return Ok(false);
+        };
+        let ours: Vec<(&str, &str)> = listing
+            .lines()
+            .filter(|l| l.contains(COMMENT))
+            .filter_map(|l| {
+                l.rsplit_once("# handle ")
+                    .map(|(rule, h)| (rule.trim(), h.trim()))
+            })
+            .collect();
+        let wanted: Vec<String> = interface
+            .map(|i| {
+                vec![
+                    format!("iifname \"{i}\" accept {COMMENT}"),
+                    format!("oifname \"{i}\" ct state established,related accept {COMMENT}"),
+                ]
+            })
+            .unwrap_or_default();
+        let current: Vec<String> = ours.iter().map(|(rule, _)| (*rule).to_owned()).collect();
+        let mut sorted_current = current.clone();
+        sorted_current.sort();
+        let mut sorted_wanted = wanted.clone();
+        sorted_wanted.sort();
+        if sorted_current == sorted_wanted {
+            return Ok(true);
+        }
+        let mut script = String::new();
+        for (_, handle) in &ours {
+            let _ = writeln!(script, "delete rule ip filter DOCKER-USER handle {handle}");
+        }
+        for rule in wanted.iter().rev() {
+            let _ = writeln!(script, "insert rule ip filter DOCKER-USER {rule}");
+        }
+        self.apply(&script).await?;
+        Ok(true)
     }
 
     /// Runs a script in one transaction.

@@ -12,6 +12,7 @@
     { href: '/', label: 'Overview', icon: 'overview' },
     { href: '/interfaces', label: 'Public interfaces', icon: 'globe' },
     { href: '/services', label: 'Services', icon: 'server' },
+    { href: '/containers', label: 'Containers', icon: 'container' },
     { href: '/routes', label: 'Routes', icon: 'route' },
     { href: '/vpn', label: 'VPN peers', icon: 'vpn' },
     { href: '/firewall', label: 'Firewall', icon: 'firewall' },

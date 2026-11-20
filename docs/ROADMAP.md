@@ -207,7 +207,7 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 ### Scope
 
 - Create, start, stop, restart, update (pull and recreate) and remove **containers** through **bollard**. Environment variables, volumes, port mappings and restart policies from the dashboard.
-- **Stacks** from Compose files. Recommendation: run the official `docker compose` CLI with a Hearthgate project label rather than reimplementing Compose, and read stack status back through the Docker API.
+- **Stacks** from Compose files, run with the official `docker compose` CLI rather than reimplementing Compose, with stack status read back through the Docker API.
 - Containers join a Hearthgate-managed Docker network so routes reach them without publishing host ports. Their names feed the internal DNS from Phase 4.
 - Logs (live tail and search) and basic stats (CPU, memory, restarts) per container.
 - Optional image update checks with a notification, never automatic updates without consent.

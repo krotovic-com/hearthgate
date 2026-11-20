@@ -226,7 +226,71 @@ export interface PeerConfigResponse {
   qr_svg: string;
 }
 
+export type RestartPolicy = 'no' | 'always' | 'unless-stopped' | 'on-failure';
+
+export interface ManagedContainer {
+  name: string;
+  image: string;
+  running?: boolean;
+  command?: string[];
+  env?: Record<string, string>;
+  volumes?: string[];
+  publish?: string[];
+  restart?: RestartPolicy;
+}
+
+export interface Stack {
+  name: string;
+  compose: string;
+  env?: Record<string, string>;
+  running?: boolean;
+}
+
+export interface DockerContainerInfo {
+  name: string;
+  owner: { kind: 'container' } | { kind: 'stack'; stack: string; service: string };
+  image: string;
+  state: string;
+  status: string;
+  health: string | null;
+  address: string | null;
+  created: number | null;
+}
+
+export interface DockerInfo {
+  enabled: boolean;
+  available: boolean;
+  error: string | null;
+  subnet: string | null;
+  containers: DockerContainerInfo[];
+  stacks: { name: string; running: number; total: number; error: string | null }[];
+  problems: string[];
+}
+
+export interface ContainerLogLine {
+  time: string;
+  stderr: boolean;
+  text: string;
+}
+
+export interface ContainerStats {
+  cpu_percent: number;
+  memory_bytes: number;
+  memory_limit: number;
+  restarts: number;
+  started_at: string | null;
+}
+
+export interface ImageUpdate {
+  image: string;
+  used_by: string[];
+  update_available: boolean;
+  error: string | null;
+}
+
 export interface DesiredState {
+  containers?: ManagedContainer[];
+  stacks?: Stack[];
   vpn?: VpnSettings;
   dns?: DnsSettings;
   interfaces?: Interface[];
@@ -453,6 +517,20 @@ export const api = {
   unban: (address: string) => request<void>('DELETE', `/api/v1/firewall/bans/${encodeURIComponent(address)}`),
   router: () => request<RouterInfo>('GET', '/api/v1/router'),
   vpn: () => request<VpnInfo>('GET', '/api/v1/vpn'),
+  docker: () => request<DockerInfo>('GET', '/api/v1/docker'),
+  restartContainer: (name: string) =>
+    request<void>('POST', `/api/v1/docker/containers/${encodeURIComponent(name)}/restart`),
+  updateContainer: (name: string) =>
+    request<void>('POST', `/api/v1/docker/containers/${encodeURIComponent(name)}/update`),
+  updateStack: (name: string) => request<void>('POST', `/api/v1/docker/stacks/${encodeURIComponent(name)}/update`),
+  containerLogs: (name: string, tail = 200, search = '') =>
+    request<ContainerLogLine[]>(
+      'GET',
+      `/api/v1/docker/containers/${encodeURIComponent(name)}/logs?tail=${tail}&search=${encodeURIComponent(search)}`,
+    ),
+  containerStats: (name: string) =>
+    request<ContainerStats>('GET', `/api/v1/docker/containers/${encodeURIComponent(name)}/stats`),
+  imageUpdates: () => request<ImageUpdate[]>('GET', '/api/v1/docker/updates'),
   peerConfig: (body: { name: string; access: Access; state: DesiredState }) =>
     request<PeerConfigResponse>('POST', '/api/v1/vpn/peer-config', body),
 };

@@ -76,6 +76,13 @@ impl Plan {
         for (name, addresses) in &services {
             names.insert(format!("{name}.{zone_name}"), addresses.clone());
         }
+        for container in &state.containers {
+            if let Some(addresses) = resolved.get(&format!("container:{}", container.name)) {
+                names
+                    .entry(format!("{}.{zone_name}", container.name))
+                    .or_insert_with(|| addresses.clone());
+            }
+        }
         for peer in &vpn.peers {
             names
                 .entry(format!("{}.{zone_name}", peer.name))

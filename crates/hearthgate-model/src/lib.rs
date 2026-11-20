@@ -9,12 +9,14 @@
 //! certificates, health) live in the subsystem crates, which compile a
 //! validated [`DesiredState`] into their own runtime structures.
 
+mod docker;
 mod firewall;
 mod hostname;
 mod types;
 mod validate;
 mod vpn;
 
+pub use docker::*;
 pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};
 pub use types::*;
@@ -116,6 +118,15 @@ impl DesiredState {
             route.hosts.dedup();
         }
         self.routes.sort_by(|a, b| a.name.cmp(&b.name));
+        for container in &mut self.containers {
+            container.name = container.name.trim().to_owned();
+            container.image = container.image.trim().to_owned();
+        }
+        self.containers.sort_by(|a, b| a.name.cmp(&b.name));
+        for stack in &mut self.stacks {
+            stack.name = stack.name.trim().to_owned();
+        }
+        self.stacks.sort_by(|a, b| a.name.cmp(&b.name));
         let fw = &mut self.firewall;
         for rule in &mut fw.rules {
             rule.name = rule.name.trim().to_owned();

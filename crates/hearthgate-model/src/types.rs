@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Dns, Firewall, Router, Vpn};
+use crate::{Container, Dns, Firewall, Router, Stack, Vpn};
 
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +39,12 @@ pub struct DesiredState {
     /// Internal DNS for VPN peers.
     #[serde(default, skip_serializing_if = "Dns::is_default")]
     pub dns: Dns,
+    /// Docker containers Hearthgate runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<Container>,
+    /// Compose stacks Hearthgate runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stacks: Vec<Stack>,
 }
 
 /// Settings for automatic certificates (ACME).

@@ -76,6 +76,24 @@ pub enum VpnCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum DockerCommand {
+    /// Show managed containers and stacks.
+    Status,
+    /// Print a managed container's recent output.
+    Logs {
+        name: String,
+        /// How many lines.
+        #[arg(short = 'n', long, default_value_t = 100)]
+        tail: usize,
+    },
+    /// Pull the newest image of a managed container or stack and recreate
+    /// it if the image changed.
+    Update { name: String },
+    /// Check whether newer images exist, without changing anything.
+    CheckUpdates,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the gateway (what the systemd service starts).
     Run,
@@ -145,6 +163,11 @@ pub enum Command {
     Vpn {
         #[command(subcommand)]
         action: VpnCommand,
+    },
+    /// Managed Docker containers and stacks.
+    Docker {
+        #[command(subcommand)]
+        action: DockerCommand,
     },
     /// Print the admin API's OpenAPI document.
     Openapi,
@@ -233,6 +256,7 @@ impl Cli {
             Command::AdminAccess { reset } => admin_access(&bootstrap, reset),
             Command::Firewall { action } => firewall(&bootstrap, &action),
             Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
+            Command::Docker { action } => crate::cli_docker::run(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -617,12 +641,19 @@ fn plural(n: usize, word: &str) -> String {
 /// One-line summary such as "2 interfaces, 3 services, 2 routes".
 #[must_use]
 pub fn summary(state: &DesiredState) -> String {
-    format!(
+    let mut out = format!(
         "{}, {}, {}",
         plural(state.interfaces.len(), "interface"),
         plural(state.services.len(), "service"),
         plural(state.routes.len(), "route")
-    )
+    );
+    if !state.containers.is_empty() {
+        out = format!("{out}, {}", plural(state.containers.len(), "container"));
+    }
+    if !state.stacks.is_empty() {
+        out = format!("{out}, {}", plural(state.stacks.len(), "stack"));
+    }
+    out
 }
 
 /// Unified diff of two states in their TOML form. Empty when equal.
