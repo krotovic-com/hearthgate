@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -16,26 +16,45 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use crate::ApiState;
+use crate::auth::Principal;
 
 #[derive(OpenApi)]
 #[openapi(
     info(
         title = "Hearthgate admin API",
-        description = "Manage a Hearthgate gateway. Every request except this document needs \
-                       `Authorization: Bearer <admin token>` (see `hearthgate admin-token`).",
+        description = "Manage a Hearthgate gateway. Requests need either a dashboard session \
+                       (cookie plus `X-CSRF-Token` for changes) or `Authorization: Bearer <token>` \
+                       with an API token or the admin token (`hearthgate admin-token`).",
         license(name = "MIT")
     ),
     paths(
         status, get_state, put_state, validate_state, list_revisions, get_revision,
-        rollback, certificates
+        rollback, certificates, preview_state, revision_diff, export_state,
+        crate::live::logs, crate::live::traffic, crate::live::events,
+        crate::access::get_access, crate::access::put_access,
+        crate::account::session_info, crate::account::setup, crate::account::login,
+        crate::account::logout, crate::account::change_password, crate::account::totp_begin,
+        crate::account::totp_enable, crate::account::totp_disable, crate::account::list_tokens,
+        crate::account::create_token, crate::account::delete_token
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
         ApplyResponse, ValidateResponse, Revision, RevisionInfo, CertificateInfo, Problem,
-        DesiredState
+        DesiredState, crate::account::SessionInfo, crate::account::UserInfo,
+        crate::account::SetupRequest, crate::account::LoginRequest, crate::account::LoginProblem,
+        crate::account::PasswordRequest, crate::account::TotpSecret,
+        crate::account::TotpEnableRequest, crate::account::PasswordConfirm,
+        crate::account::ApiTokenInfo, crate::account::NewToken, crate::account::CreatedToken,
+        HostInfo, PreviewResponse, DiffResponse, crate::live::Rate, crate::live::TrafficBucket,
+        crate::live::LogLine, crate::access::AccessSettings, crate::access::AccessMode,
+        crate::access::AccessInfo, crate::access::Resolved
     )),
     modifiers(&Security),
-    tags((name = "hearthgate"))
+    tags(
+        (name = "hearthgate"),
+        (name = "auth", description = "Dashboard login and API tokens"),
+        (name = "settings", description = "Settings kept outside the desired state")
+    )
 )]
 pub struct ApiDoc;
 
@@ -56,21 +75,55 @@ impl utoipa::Modify for Security {
 }
 
 pub fn router(state: ApiState) -> Router {
+    use crate::account;
     Router::new()
+        .route("/api/v1/auth/session", get(account::session_info))
+        .route("/api/v1/auth/setup", post(account::setup))
+        .route("/api/v1/auth/login", post(account::login))
+        .route("/api/v1/auth/logout", post(account::logout))
+        .route("/api/v1/auth/password", post(account::change_password))
+        .route("/api/v1/auth/totp/begin", post(account::totp_begin))
+        .route("/api/v1/auth/totp/enable", post(account::totp_enable))
+        .route("/api/v1/auth/totp/disable", post(account::totp_disable))
+        .route(
+            "/api/v1/tokens",
+            get(account::list_tokens).post(account::create_token),
+        )
+        .route(
+            "/api/v1/tokens/{id}",
+            axum::routing::delete(account::delete_token),
+        )
         .route("/api/v1/status", get(status))
         .route("/api/v1/state", get(get_state).put(put_state))
         .route("/api/v1/state/validate", post(validate_state))
+        .route("/api/v1/state/preview", post(preview_state))
+        .route("/api/v1/state/export", get(export_state))
         .route("/api/v1/revisions", get(list_revisions))
         .route("/api/v1/revisions/{id}", get(get_revision))
+        .route("/api/v1/revisions/{id}/diff", get(revision_diff))
+        .route("/api/v1/logs", get(crate::live::logs))
+        .route("/api/v1/traffic", get(crate::live::traffic))
+        .route("/api/v1/events", get(crate::live::events))
+        .route(
+            "/api/v1/settings/admin-access",
+            get(crate::access::get_access).put(crate::access::put_access),
+        )
         .route("/api/v1/revisions/{id}/rollback", post(rollback))
         .route("/api/v1/certificates", get(certificates))
         .route("/api/v1/openapi.json", get(openapi))
         .route("/metrics", get(metrics))
+        .route("/api/{*rest}", axum::routing::any(api_not_found))
+        .fallback(crate::ui::serve)
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
-            crate::auth::require_token,
+            crate::auth::authenticate,
         ))
+        .layer(axum::middleware::from_fn(crate::ui::security_headers))
         .with_state(state)
+}
+
+async fn api_not_found() -> ApiError {
+    ApiError::new(StatusCode::NOT_FOUND, "no such API endpoint")
 }
 
 /// An error with a message and, for validation failures, every problem.
@@ -81,7 +134,35 @@ pub struct Problem {
     pub problems: Vec<String>,
 }
 
-struct ApiError(StatusCode, Problem);
+pub(crate) struct ApiError(pub StatusCode, pub Problem);
+
+impl ApiError {
+    pub(crate) fn new(status: StatusCode, message: impl Into<String>) -> Self {
+        Self(
+            status,
+            Problem {
+                error: message.into(),
+                problems: Vec::new(),
+            },
+        )
+    }
+}
+
+impl ApiError {
+    pub(crate) fn with_problems(
+        status: StatusCode,
+        message: impl Into<String>,
+        problems: Vec<String>,
+    ) -> Self {
+        Self(
+            status,
+            Problem {
+                error: message.into(),
+                problems,
+            },
+        )
+    }
+}
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -117,9 +198,9 @@ impl From<StoreError> for ApiError {
     }
 }
 
-type ApiResult<T> = Result<Json<T>, ApiError>;
+pub(crate) type ApiResult<T> = Result<Json<T>, ApiError>;
 
-async fn blocking<T, F>(f: F) -> Result<T, ApiError>
+pub(crate) async fn blocking<T, F>(f: F) -> Result<T, ApiError>
 where
     F: FnOnce() -> Result<T, StoreError> + Send + 'static,
     T: Send + 'static,
@@ -192,6 +273,33 @@ pub struct UpstreamStatus {
     pub ejected: bool,
     /// Open connections or in-flight requests.
     pub active: usize,
+    /// Traffic over the last few seconds.
+    pub rate: crate::live::Rate,
+}
+
+/// The machine Hearthgate runs on.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HostInfo {
+    pub hostname: String,
+    /// Operating system, for example `Debian GNU/Linux 13 (trixie)`.
+    pub os: Option<String>,
+    /// Seconds since Hearthgate started.
+    pub uptime: u64,
+}
+
+fn host_info(state: &ApiState) -> HostInfo {
+    static OS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    let os = OS.get_or_init(|| {
+        let text = std::fs::read_to_string("/etc/os-release").ok()?;
+        text.lines()
+            .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+            .map(|v| v.trim_matches('"').to_owned())
+    });
+    HostInfo {
+        hostname: crate::tls::hostname().unwrap_or_else(|| "localhost".to_owned()),
+        os: os.clone(),
+        uptime: state.live.uptime(),
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -206,11 +314,17 @@ pub struct StatusResponse {
     pub upstreams: Vec<UpstreamStatus>,
     /// Things that need attention.
     pub problems: Vec<String>,
+    pub host: HostInfo,
 }
 
 /// Gateway status: listeners, upstream health and problems.
 #[utoipa::path(get, path = "/api/v1/status", responses((status = 200, body = StatusResponse)))]
 async fn status(State(state): State<ApiState>) -> ApiResult<StatusResponse> {
+    Ok(Json(status_snapshot(&state).await?))
+}
+
+/// The body of `/api/v1/status`.
+pub(crate) async fn status_snapshot(state: &ApiState) -> Result<StatusResponse, ApiError> {
     let store = Arc::clone(&state.store);
     let latest = blocking(move || store.current_id()).await?;
     let runtime = state
@@ -241,16 +355,18 @@ async fn status(State(state): State<ApiState>) -> ApiResult<StatusResponse> {
             healthy: u.healthy(),
             ejected: u.ejected(),
             active: u.active(),
+            rate: state.live.rate(&u.service, u.port),
         })
         .collect();
-    Ok(Json(StatusResponse {
+    Ok(StatusResponse {
         version: crate_version(),
         revision: runtime.revision,
         latest_revision: latest,
         listeners,
         upstreams,
         problems: runtime.problems,
-    }))
+        host: host_info(state),
+    })
 }
 
 fn crate_version() -> String {
@@ -321,11 +437,13 @@ fn applied(state: &ApiState, a: Applied) -> ApplyResponse {
 )]
 async fn put_state(
     State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
     Json(req): Json<ApplyRequest>,
 ) -> ApiResult<ApplyResponse> {
     let store = Arc::clone(&state.store);
     let message = req.message.unwrap_or_else(|| "Change via API".to_owned());
-    let result = blocking(move || store.apply(&req.state.normalized(), "api", &message)).await?;
+    let author = principal.author();
+    let result = blocking(move || store.apply(&req.state.normalized(), &author, &message)).await?;
     Ok(Json(applied(&state, result)))
 }
 
@@ -349,6 +467,107 @@ async fn validate_state(Json(desired): Json<DesiredState>) -> Json<ValidateRespo
         valid: problems.is_empty(),
         problems,
     })
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PreviewResponse {
+    pub valid: bool,
+    pub problems: Vec<String>,
+    /// False when the state equals the current revision.
+    pub changed: bool,
+    /// Unified diff from the current revision, in TOML form.
+    pub diff: String,
+}
+
+/// Check a draft and show what applying it would change.
+#[utoipa::path(
+    post, path = "/api/v1/state/preview", request_body = DesiredState,
+    responses((status = 200, body = PreviewResponse))
+)]
+async fn preview_state(
+    State(state): State<ApiState>,
+    Json(desired): Json<DesiredState>,
+) -> ApiResult<PreviewResponse> {
+    let desired = desired.normalized();
+    let problems = match desired.validate() {
+        Ok(()) => Vec::new(),
+        Err(e) => e.0.iter().map(ToString::to_string).collect(),
+    };
+    let store = Arc::clone(&state.store);
+    let current = blocking(move || store.current_state()).await?;
+    let diff = current.diff(&desired);
+    Ok(Json(PreviewResponse {
+        valid: problems.is_empty(),
+        problems,
+        changed: !diff.is_empty(),
+        diff,
+    }))
+}
+
+/// The current desired state as a TOML file, for `hearthgate import`.
+#[utoipa::path(
+    get, path = "/api/v1/state/export",
+    responses((status = 200, description = "TOML", content_type = "application/toml", body = String))
+)]
+async fn export_state(State(state): State<ApiState>) -> Result<Response, ApiError> {
+    let store = Arc::clone(&state.store);
+    let (id, desired) = blocking(move || {
+        Ok(match store.current()? {
+            Some(r) => (r.meta.id, r.state),
+            None => (0, DesiredState::default()),
+        })
+    })
+    .await?;
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/toml; charset=utf-8".to_owned(),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"hearthgate-revision-{id}.toml\""),
+            ),
+        ],
+        desired.to_toml(),
+    )
+        .into_response())
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DiffResponse {
+    /// The revision compared against (the one before), if any.
+    pub previous: Option<i64>,
+    /// Unified diff in TOML form.
+    pub diff: String,
+}
+
+/// What a revision changed compared with the one before it.
+#[utoipa::path(
+    get, path = "/api/v1/revisions/{id}/diff", params(("id" = i64, Path, description = "Revision number")),
+    responses((status = 200, body = DiffResponse), (status = 404, body = Problem))
+)]
+async fn revision_diff(
+    State(state): State<ApiState>,
+    Path(id): Path<i64>,
+) -> ApiResult<DiffResponse> {
+    let store = Arc::clone(&state.store);
+    let (previous, old, new) = blocking(move || {
+        let new = store.revision(id)?.ok_or(StoreError::NoSuchRevision(id))?;
+        let mut prev = id - 1;
+        while prev > 0 {
+            if let Some(r) = store.revision(prev)? {
+                return Ok((Some(prev), r.state, new.state));
+            }
+            prev -= 1;
+        }
+        Ok((None, DesiredState::default(), new.state))
+    })
+    .await?;
+    Ok(Json(DiffResponse {
+        previous,
+        diff: old.diff(&new),
+    }))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -391,9 +610,14 @@ async fn get_revision(State(state): State<ApiState>, Path(id): Path<i64>) -> Api
     post, path = "/api/v1/revisions/{id}/rollback", params(("id" = i64, Path, description = "Revision number")),
     responses((status = 200, body = ApplyResponse), (status = 404, body = Problem))
 )]
-async fn rollback(State(state): State<ApiState>, Path(id): Path<i64>) -> ApiResult<ApplyResponse> {
+async fn rollback(
+    State(state): State<ApiState>,
+    Extension(principal): Extension<Principal>,
+    Path(id): Path<i64>,
+) -> ApiResult<ApplyResponse> {
     let store = Arc::clone(&state.store);
-    let result = blocking(move || store.rollback(id, "api")).await?;
+    let author = principal.author();
+    let result = blocking(move || store.rollback(id, &author)).await?;
     Ok(Json(applied(&state, result)))
 }
 

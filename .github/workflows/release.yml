@@ -50,6 +50,13 @@ jobs:
         with:
           tool: cargo-zigbuild,git-cliff
 
+      - uses: actions/setup-node@v5
+        if: steps.version.outputs.version != ''
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
       - name: Test
         if: steps.version.outputs.version != ''
         run: cargo test --locked

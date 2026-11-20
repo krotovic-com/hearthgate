@@ -15,7 +15,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** early development. The core gateway works: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a CLI and an admin API. The dashboard, firewall, VPN and managed Docker stacks are next. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
+> **Status:** early development. The core gateway and its dashboard work: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a web dashboard reachable only from your LAN, a CLI and an admin API. The firewall, VPN and managed Docker stacks are next. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
 
 ## What it does
 
@@ -26,17 +26,15 @@ Available now:
 - **TLS your way.** Terminate TLS in Hearthgate, or pass it through untouched by server name, on the same port.
 - **Services.** Route to programs on your network (such as sshd) or to existing Docker containers, which are followed across restarts.
 - **Every change is a revision.** Apply a file, see the diff, roll back. Changes take effect within a second without dropping open connections.
-- **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks with a token, and Prometheus metrics.
+- **Dashboard.** A web UI, reachable only from your LAN over HTTPS, with live health and traffic, a draft-review-apply flow with diffs, history and rollback, two-factor login and API tokens.
+- **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks, and Prometheus metrics.
 
 Coming next:
 
-- **Public interfaces.** A domain plus public ports (TCP, UDP or both), with automatic certificate issuance and renewal.
-- **Routes and load balancing.** Point a public interface at one or more services. Two or more targets are load-balanced.
 - **Managed Docker.** Docker containers and stacks that Hearthgate starts and updates for you.
 - **Built-in VPN.** Peers reach every internal service, published or not, with internal DNS at `name.home.internal`.
 - **Firewall and blocklists.** Unexposed ports stay closed, and known-bad sources are blocked.
 - **UPnP.** Optionally opens and closes router ports to match your public interfaces.
-- **Dashboard.** A web UI that is reachable only from your LAN or over the VPN.
 - **Optional AI assistant.** Bring your own provider (Claude, Gemini, OpenAI, Ollama and others) to review rules and troubleshoot services. Suggestions always wait for your approval, and logs are redacted before they leave the machine.
 
 ## Install
@@ -68,7 +66,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now hearthgate
 ```
 
-Then describe what to expose in a file (start from `examples/state.toml`) and apply it:
+Then open `https://SERVER-LAN-ADDRESS:7380/` from a computer on your network and create the admin account with the setup code from `sudo -u hearthgate hearthgate setup-code` (the [guide](docs/guide.md#dashboard) explains the certificate warning). Or describe what to expose in a file (start from `examples/state.toml`) and apply it:
 
 ```sh
 sudo -u hearthgate hearthgate validate state.toml

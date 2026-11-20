@@ -24,7 +24,6 @@ ipnet.workspace = true
 sd-notify.workspace = true
 tokio-util.workspace = true
 serde.workspace = true
-similar.workspace = true
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true

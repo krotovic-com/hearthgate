@@ -2,7 +2,7 @@
 # Builds static Linux binaries for every release target and packages them
 # into dist/. Runs the same way locally and in the release workflow.
 #
-# Requires: rustup, cargo-zigbuild and zig (see CONTRIBUTING.md).
+# Requires: rustup, cargo-zigbuild, zig and Node.js 22 (see CONTRIBUTING.md).
 # Usage: scripts/build-release.sh VERSION [TARGET...]
 set -euo pipefail
 
@@ -23,6 +23,10 @@ cd "$root"
 # The binary reads its version from HEARTHGATE_VERSION at compile time, so
 # nothing in the repository has to be edited or committed for a release.
 export HEARTHGATE_VERSION="$version"
+
+# The dashboard is embedded in the binary, so build it first.
+echo "==> Building the dashboard"
+(cd dashboard && npm ci && npm run build)
 
 rm -rf dist
 mkdir -p dist

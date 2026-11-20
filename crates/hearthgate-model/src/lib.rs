@@ -47,6 +47,24 @@ impl DesiredState {
         toml::to_string_pretty(self).expect("desired state always serialises to TOML")
     }
 
+    /// Unified diff from `self` to `new`, in their TOML form. Empty when
+    /// they are equal. This is what revision history and the dashboard's
+    /// review step show.
+    #[must_use]
+    pub fn diff(&self, new: &Self) -> String {
+        use std::fmt::Write as _;
+        let (old, new) = (self.to_toml(), new.to_toml());
+        if old == new {
+            return String::new();
+        }
+        let diff = similar::TextDiff::from_lines(&old, &new);
+        let mut out = String::new();
+        for hunk in diff.unified_diff().context_radius(3).iter_hunks() {
+            let _ = write!(out, "{hunk}");
+        }
+        out
+    }
+
     /// Parses the canonical JSON form used by the store.
     pub fn from_json(text: &str) -> Result<Self, ParseError> {
         Ok(serde_json::from_str(text)?)

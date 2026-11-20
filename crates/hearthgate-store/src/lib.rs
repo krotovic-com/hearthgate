@@ -15,6 +15,10 @@ use hearthgate_model::{DesiredState, ValidationErrors};
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
+mod accounts;
+
+pub use accounts::{ApiToken, Session, User};
+
 /// File name of the state database inside the data directory.
 pub const DATABASE_FILE: &str = "state.db";
 
@@ -97,6 +101,29 @@ const MIGRATIONS: &[&str] = &[
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );",
+    // 2: dashboard accounts, sessions and API tokens.
+    "CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        totp_secret TEXT,
+        created_at INTEGER NOT NULL
+    );
+    CREATE TABLE sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        csrf TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX sessions_user ON sessions(user_id);
+    CREATE TABLE api_tokens (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER
+    );",
 ];
 
 /// Handle to the state database. Cheap to share between threads.
@@ -125,7 +152,6 @@ impl Store {
         conn.busy_timeout(Duration::from_secs(5))?;
         set_wal(&conn)?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        conn.pragma_update(None, "foreign_keys", true)?;
         Self::with_connection(conn)
     }
 
@@ -135,13 +161,14 @@ impl Store {
     }
 
     fn with_connection(mut conn: Connection) -> Result<Self, StoreError> {
+        conn.pragma_update(None, "foreign_keys", true)?;
         migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
     }
 
-    fn conn(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -275,7 +302,14 @@ impl Store {
             .optional()?)
     }
 
-    /// Writes a metadata value.
+    /// Removes a metadata value.
+    pub fn meta_delete(&self, key: &str) -> Result<(), StoreError> {
+        self.conn()
+            .execute("DELETE FROM meta WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
+    /// Sets a metadata value.
     pub fn meta_set(&self, key: &str, value: &str) -> Result<(), StoreError> {
         self.conn().execute(
             "INSERT INTO meta (key, value) VALUES (?1, ?2)

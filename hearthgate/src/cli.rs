@@ -1,6 +1,5 @@
 //! The `hearthgate` command line.
 
-use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -81,6 +80,15 @@ pub enum Command {
     Diff { from: i64, to: Option<i64> },
     /// Print the admin API token (created on first use).
     AdminToken,
+    /// Print the one-time code for creating the first dashboard account.
+    SetupCode,
+    /// Show who can reach the dashboard. With --reset, go back to the
+    /// default (this machine's LAN) after a restart, for when a change in
+    /// the dashboard locked you out.
+    AdminAccess {
+        #[arg(long)]
+        reset: bool,
+    },
     /// Print the admin API's OpenAPI document.
     Openapi,
     /// Manage manually uploaded certificates.
@@ -155,6 +163,17 @@ impl Cli {
                 println!("{token}");
                 Ok(ExitCode::SUCCESS)
             }
+            Command::SetupCode => {
+                let store = open_store(&bootstrap)?;
+                if let Some(code) = hearthgate_api::setup_code(&store)? {
+                    println!("{code}");
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    eprintln!("A dashboard account already exists, so there is no setup code.");
+                    Ok(ExitCode::FAILURE)
+                }
+            }
+            Command::AdminAccess { reset } => admin_access(&bootstrap, reset),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -163,6 +182,41 @@ impl Cli {
             }
         }
     }
+}
+
+fn admin_access(bootstrap: &Bootstrap, reset: bool) -> Result<ExitCode> {
+    use hearthgate_api::access::{self, AccessControl, AccessMode};
+    if bootstrap.admin.fixed() {
+        println!("Set in the bootstrap file:");
+        for addr in bootstrap.admin.listen_or_default() {
+            println!("  listen {addr}");
+        }
+        for net in bootstrap.admin.allow_or_default() {
+            println!("  allow  {net}");
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+    let store = open_store(bootstrap)?;
+    if reset {
+        store.meta_delete(access::META_KEY)?;
+        println!(
+            "Reset to the defaults. Restart Hearthgate to apply: systemctl restart hearthgate"
+        );
+        return Ok(ExitCode::SUCCESS);
+    }
+    let settings = AccessControl::stored(&store);
+    let resolved = access::resolve(&settings, &access::detect_lan());
+    match settings.mode {
+        AccessMode::Lan => println!("This machine's LAN addresses (found at start):"),
+        AccessMode::Custom => println!("Chosen in the dashboard:"),
+    }
+    for addr in resolved.listen {
+        println!("  listen {addr}");
+    }
+    for net in resolved.allow {
+        println!("  allow  {net}");
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn open_store(bootstrap: &Bootstrap) -> Result<Store> {
@@ -436,16 +490,7 @@ pub fn summary(state: &DesiredState) -> String {
 /// Unified diff of two states in their TOML form. Empty when equal.
 #[must_use]
 pub fn diff(old: &DesiredState, new: &DesiredState) -> String {
-    let (old, new) = (old.to_toml(), new.to_toml());
-    if old == new {
-        return String::new();
-    }
-    let diff = similar::TextDiff::from_lines(&old, &new);
-    let mut out = String::new();
-    for hunk in diff.unified_diff().context_radius(3).iter_hunks() {
-        let _ = write!(out, "{hunk}");
-    }
-    out
+    old.diff(new)
 }
 
 #[cfg(test)]

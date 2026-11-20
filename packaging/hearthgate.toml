@@ -11,14 +11,22 @@ data_dir = "/var/lib/hearthgate"
 log = "info"
 
 [admin]
-# Addresses the admin API listens on. Keep it on loopback, or add your
-# server's LAN address, for example "192.168.1.10:7380". Never 0.0.0.0.
-listen = ["127.0.0.1:7380"]
-# Clients outside these ranges are disconnected before a byte is read, even
-# if `listen` is misconfigured.
-allow = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10"]
+# The dashboard and admin API. By default Hearthgate listens on port 7380 of
+# loopback and this machine's LAN addresses, and lets in only clients from
+# loopback and those LAN networks. Change that in the dashboard (Settings,
+# Dashboard access), or fix it here; setting either line below makes the
+# dashboard show it read-only. Clients outside `allow` are disconnected
+# before a byte is read, even if `listen` is misconfigured. `listen = []`
+# turns the admin API off.
+# listen = ["127.0.0.1:7380", "192.168.1.10:7380"]
+# allow = ["127.0.0.0/8", "::1/128", "192.168.1.0/24"]
 # Serve /metrics without the admin token (to clients in `allow`).
 metrics_without_token = false
+# The dashboard uses HTTPS with a self-signed certificate (its fingerprint
+# is in the log and on the Settings page). Use your own, for example from
+# an internal CA, with both of these:
+# certificate = "/etc/hearthgate/dashboard.pem"
+# private_key = "/etc/hearthgate/dashboard.key"
 
 [docker]
 # Read-only discovery of containers for `kind = "docker"` services.

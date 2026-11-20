@@ -1,6 +1,6 @@
 # Hearthgate user guide
 
-This guide covers what Hearthgate 0.2 does: public interfaces, services, routes, load balancing, health checks, certificates, the command line and the admin API. Later releases add the dashboard, firewall, VPN and managed Docker (see the [roadmap](ROADMAP.md)).
+This guide covers what Hearthgate 0.3 does: the dashboard, public interfaces, services, routes, load balancing, health checks, certificates, the command line and the admin API. Later releases add the firewall, VPN and managed Docker (see the [roadmap](ROADMAP.md)).
 
 ## How it fits together
 
@@ -17,9 +17,9 @@ There are two files:
 | File | What it holds | How you change it |
 |---|---|---|
 | `/etc/hearthgate/hearthgate.toml` | Bootstrap settings: data directory, log level, admin API, Docker socket | Edit it and restart the service |
-| A desired-state file, for example `state.toml` | Interfaces, services, routes, certificates settings | `hearthgate apply state.toml` |
+| A desired-state file, for example `state.toml` | Interfaces, services, routes, certificates settings | The dashboard, or `hearthgate apply state.toml` |
 
-The desired-state file is only an input. After `apply`, the database is the source of truth, and `hearthgate export` prints it back.
+The desired-state file is only an input. After `apply`, the database is the source of truth, and `hearthgate export` prints it back. You don't need a file at all if you use the dashboard.
 
 ## Install
 
@@ -43,6 +43,32 @@ Run CLI commands as root or as the `hearthgate` user, because they open the data
 ```sh
 sudo -u hearthgate hearthgate apply state.toml
 ```
+
+## Dashboard
+
+Open `https://SERVER-LAN-ADDRESS:7380/` from a computer on the same network. Hearthgate finds the server's LAN addresses when it starts, listens on those and on loopback, and closes connections from anywhere else before reading a byte, so the dashboard is never reachable from the internet.
+
+**First visit.** The dashboard asks for a setup code, a username and a password (at least 12 characters). The code proves you have access to the server. It is in the service log, or print it with:
+
+```sh
+sudo -u hearthgate hearthgate setup-code
+```
+
+The code stops working once the account exists.
+
+**The certificate warning.** The dashboard uses HTTPS with a self-signed certificate made on first start, so your browser warns about it once. Before you accept it, compare its SHA-256 fingerprint (in the browser's certificate details) with the one Hearthgate logged:
+
+```sh
+journalctl -u hearthgate | grep fingerprint
+```
+
+They must match. To avoid the warning, give Hearthgate a certificate from your own CA with `admin.certificate` and `admin.private_key` in the bootstrap file. Plain HTTP requests to the port are redirected to HTTPS.
+
+**Publishing a service.** Add the service (a container or a program on your network), then a public interface with its domain and ports, then a route between them on the Routes page. Edits go into a draft: the bar at the bottom shows what changed, **Review and apply** shows the diff, and applying stores it as a new revision. The **History** page shows every revision's diff and rolls back to any of them.
+
+**Accounts.** Under Settings, Account you can change the password (other sessions are logged out), turn on two-factor login with an authenticator app, and create API tokens for scripts. Ten failed logins in 15 minutes from one address, or for one username, block further attempts for a while. Sessions end after 12 hours without use and after 7 days at most.
+
+**Who can reach it.** Settings, Dashboard access shows the addresses and networks in effect and lets you choose your own (private ranges only). Changes apply at once; a change that would lock out the browser making it is refused. If you lock yourself out anyway, run `sudo -u hearthgate hearthgate admin-access --reset` and restart the service. Setting `admin.listen` or `admin.allow` in the bootstrap file fixes the values there instead, and the dashboard shows them read-only.
 
 ## Desired state
 
@@ -186,6 +212,8 @@ drain_timeout = "30s"           # removed listeners and shutdown
 | `hearthgate rollback N` | Make revision N current again, as a new revision |
 | `hearthgate cert import/list/remove` | Uploaded certificates |
 | `hearthgate admin-token` | Print the admin API token |
+| `hearthgate setup-code` | Print the code for creating the first dashboard account |
+| `hearthgate admin-access [--reset]` | Show who can reach the dashboard, or reset that to the default |
 | `hearthgate openapi` | Print the admin API's OpenAPI document |
 
 `--data-dir` (or `HEARTHGATE_DATA_DIR`) points any command at another data directory, which is handy for trying things out without root.
@@ -194,24 +222,30 @@ drain_timeout = "30s"           # removed listeners and shutdown
 
 ## Admin API
 
-The REST API listens on `127.0.0.1:7380` by default. Its OpenAPI document is at `/api/v1/openapi.json`, and every other request needs the token from `hearthgate admin-token`:
+The dashboard uses the same REST API as scripts, on the same port. Its OpenAPI document is at `/api/v1/openapi.json`. Scripts authenticate with an API token created under Settings, Account, or with the admin token for scripts on the server itself:
 
 ```sh
 TOKEN=$(sudo -u hearthgate hearthgate admin-token)
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:7380/api/v1/status
+curl --cacert /var/lib/hearthgate/admin-tls/cert.pem \
+  -H "Authorization: Bearer $TOKEN" https://localhost:7380/api/v1/status
 ```
 
 | Endpoint | |
 |---|---|
-| `GET /api/v1/status` | Running revision, listeners, upstream health and problems |
+| `GET /api/v1/status` | Running revision, listeners, upstream health and traffic rates, problems |
 | `GET /api/v1/state`, `PUT /api/v1/state` | Read or replace the desired state (JSON) |
-| `POST /api/v1/state/validate` | Check a state without storing it |
-| `GET /api/v1/revisions`, `GET /api/v1/revisions/{id}` | History |
+| `POST /api/v1/state/validate`, `POST /api/v1/state/preview` | Check a state, and see its diff against the running one |
+| `GET /api/v1/state/export` | The running state as TOML |
+| `GET /api/v1/revisions`, `GET /api/v1/revisions/{id}`, `GET /api/v1/revisions/{id}/diff` | History |
 | `POST /api/v1/revisions/{id}/rollback` | Roll back |
 | `GET /api/v1/certificates` | Stored certificates and expiry |
+| `GET /api/v1/events` | Live updates as Server-Sent Events: status every 2 seconds and new log lines |
+| `GET /api/v1/logs`, `GET /api/v1/traffic` | The last log lines, and requests per hour for 24 hours |
+| `GET`, `PUT /api/v1/settings/admin-access` | Who can reach the dashboard |
+| `/api/v1/auth/…`, `/api/v1/tokens` | Login, password, two-factor login and API tokens |
 | `GET /metrics` | Prometheus metrics |
 
-To reach it from other machines on your LAN, add the server's LAN address to `admin.listen` in the bootstrap file. Clients outside `admin.allow` (by default loopback and private ranges) are disconnected before anything is read, even if `listen` is set to a public address. In this release the API speaks plain HTTP, so keep it on a network you trust. The dashboard release adds HTTPS and proper logins.
+Browser sessions also need the `X-CSRF-Token` header (from `GET /api/v1/auth/session`) on every request that changes something; token-authenticated requests don't.
 
 ### Metrics
 
@@ -221,5 +255,5 @@ To reach it from other machines on your LAN, add the server's LAN address to `ad
 
 - `systemctl reload hearthgate` makes the gateway re-read the current revision at once.
 - Logs go to the journal: `journalctl -u hearthgate -f`. Set `log = "hearthgate=debug,info"` in the bootstrap file for more detail.
-- Back up `/var/lib/hearthgate`: it holds the database, certificates, ACME account keys and the admin token, all readable only by the `hearthgate` user.
+- Back up `/var/lib/hearthgate`: it holds the database (with dashboard accounts), certificates, ACME account keys, the dashboard certificate and the admin token, all readable only by the `hearthgate` user.
 - Ports a listener cannot bind (for example because another program uses them) are reported in the log and in `/api/v1/status`, and retried every 10 seconds. Everything else keeps working.

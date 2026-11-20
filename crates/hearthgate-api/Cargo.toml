@@ -13,21 +13,33 @@ hearthgate-acme.workspace = true
 hearthgate-model = { workspace = true, features = ["openapi"] }
 hearthgate-proxy.workspace = true
 hearthgate-store.workspace = true
+argon2.workspace = true
 axum.workspace = true
+futures-util.workspace = true
 getrandom.workspace = true
+hmac.workspace = true
+hyper.workspace = true
 hyper-util.workspace = true
+if-addrs.workspace = true
 ipnet.workspace = true
+rcgen.workspace = true
+rust-embed.workspace = true
+rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+time.workspace = true
 tokio.workspace = true
+tokio-rustls.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
 bytes.workspace = true
 http-body-util.workspace = true
-hyper.workspace = true
 tempfile.workspace = true
 
 [lints]
