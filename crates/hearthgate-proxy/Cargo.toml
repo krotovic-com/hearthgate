@@ -1,0 +1,20 @@
+[package]
+name = "hearthgate-proxy"
+description = "Hearthgate data plane: TCP, UDP, TLS and HTTP proxying with load balancing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+hearthgate-model.workspace = true
+arc-swap.workspace = true
+socket2.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -15,6 +15,7 @@ publish.workspace = true
 [dependencies]
 hearthgate-model.workspace = true
 hearthgate-store.workspace = true
+hearthgate-proxy.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true

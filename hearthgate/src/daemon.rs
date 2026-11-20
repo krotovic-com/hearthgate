@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use hearthgate_model::DesiredState;
+use hearthgate_proxy::{Gateway, NoContainers, compile};
 use hearthgate_store::Store;
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info, warn};
@@ -46,8 +47,14 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
             bootstrap.data_dir.display()
         )
     })?);
-    let mut applied: Option<i64> = None;
-    reconcile(&store, &mut applied).await;
+    let mut daemon = Daemon {
+        store,
+        gateway: Arc::new(Gateway::new()),
+        applied: None,
+        retry_at: None,
+        drain: DesiredState::default().limits.drain_timeout,
+    };
+    daemon.reconcile(false).await;
 
     let mut hangup = signal(SignalKind::hangup())?;
     let mut terminate = signal(SignalKind::terminate())?;
@@ -56,62 +63,85 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
-            _ = tick.tick() => reconcile(&store, &mut applied).await,
+            _ = tick.tick() => daemon.reconcile(false).await,
             _ = hangup.recv() => {
                 info!("reload requested");
-                reconcile(&store, &mut applied).await;
+                daemon.reconcile(true).await;
             }
             _ = terminate.recv() => break,
             _ = interrupt.recv() => break,
         }
     }
-    info!("stopping");
+    info!(
+        "stopping; open connections get {:?} to finish",
+        daemon.drain
+    );
+    daemon.gateway.shutdown(daemon.drain).await;
     Ok(())
 }
 
-/// Applies the current revision if it differs from the one running.
-async fn reconcile(store: &Arc<Store>, applied: &mut Option<i64>) {
-    let store = Arc::clone(store);
-    let current = tokio::task::spawn_blocking(move || -> Result<_> {
-        let id = store.current_id()?;
-        if id.is_none() {
-            return Ok(None);
-        }
-        Ok(store.current()?)
-    })
-    .await;
-    let revision = match current {
-        Ok(Ok(revision)) => revision,
-        Ok(Err(e)) => {
-            error!("cannot read the current revision: {e:#}");
-            return;
-        }
-        Err(e) => {
-            error!("store task failed: {e}");
-            return;
-        }
-    };
-    let id = revision.as_ref().map(|r| r.meta.id);
-    // Revision 0 stands for "no revisions yet".
-    let key = id.unwrap_or(0);
-    if *applied == Some(key) {
-        return;
-    }
-    let state = revision.map(|r| r.state).unwrap_or_default();
-    if let Err(e) = apply_state(&state) {
-        // Keep running the previous configuration and try again next tick.
-        warn!("revision {id:?} could not be applied: {e:#}");
-        return;
-    }
-    if let Some(id) = id {
-        info!("running revision {id}");
-    } else {
-        info!("no revisions yet: nothing is exposed");
-    }
-    *applied = Some(key);
+/// How long to wait before retrying sockets that could not be bound.
+const BIND_RETRY: Duration = Duration::from_secs(10);
+
+struct Daemon {
+    store: Arc<Store>,
+    gateway: Arc<Gateway>,
+    /// Revision running now; 0 stands for "no revisions yet".
+    applied: Option<i64>,
+    /// When to retry a revision whose sockets did not all bind.
+    retry_at: Option<tokio::time::Instant>,
+    drain: Duration,
 }
 
-#[allow(clippy::unnecessary_wraps)] // subsystems are wired in from M1.2
-fn apply_state(_state: &DesiredState) -> Result<()> {
-    Ok(())
+impl Daemon {
+    /// Applies the current revision if it differs from the one running, or
+    /// when `force` is set or a bind retry is due.
+    async fn reconcile(&mut self, force: bool) {
+        let store = Arc::clone(&self.store);
+        let current = tokio::task::spawn_blocking(move || store.current()).await;
+        let revision = match current {
+            Ok(Ok(revision)) => revision,
+            Ok(Err(e)) => {
+                error!("cannot read the current revision: {e:#}");
+                return;
+            }
+            Err(e) => {
+                error!("store task failed: {e}");
+                return;
+            }
+        };
+        let id = revision.as_ref().map(|r| r.meta.id);
+        let key = id.unwrap_or(0);
+        let retry_due = self
+            .retry_at
+            .is_some_and(|at| tokio::time::Instant::now() >= at);
+        if self.applied == Some(key) && !force && !retry_due {
+            return;
+        }
+        let state = revision.map(|r| r.state).unwrap_or_default();
+        self.drain = state.limits.drain_timeout;
+        let plan = compile(&state, self.gateway.upstreams(), &NoContainers);
+        let errors = self.gateway.apply(&plan).await;
+        if errors.is_empty() {
+            self.retry_at = None;
+        } else {
+            for e in &errors {
+                warn!("{e}");
+            }
+            warn!(
+                "{} socket(s) could not be started; retrying in {}s",
+                errors.len(),
+                BIND_RETRY.as_secs()
+            );
+            self.retry_at = Some(tokio::time::Instant::now() + BIND_RETRY);
+        }
+        if self.applied != Some(key) {
+            if let Some(id) = id {
+                info!("running revision {id}");
+            } else {
+                info!("no revisions yet: nothing is exposed");
+            }
+        }
+        self.applied = Some(key);
+    }
 }
