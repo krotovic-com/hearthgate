@@ -29,6 +29,18 @@ pub struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum FirewallCommand {
+    /// Show whether the firewall is on and whether a change is waiting.
+    Status,
+    /// Keep the firewall change that is waiting. Run it from a new SSH
+    /// session: if that session gets in, the new rules work.
+    Confirm,
+    /// Turn the firewall off (a new revision), for when a change locked
+    /// you out and you are at the console.
+    Off,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the gateway (what the systemd service starts).
     Run,
@@ -88,6 +100,11 @@ pub enum Command {
     AdminAccess {
         #[arg(long)]
         reset: bool,
+    },
+    /// Firewall: show its state, confirm a change, or turn it off.
+    Firewall {
+        #[command(subcommand)]
+        action: FirewallCommand,
     },
     /// Print the admin API's OpenAPI document.
     Openapi,
@@ -174,6 +191,7 @@ impl Cli {
                 }
             }
             Command::AdminAccess { reset } => admin_access(&bootstrap, reset),
+            Command::Firewall { action } => firewall(&bootstrap, &action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -182,6 +200,77 @@ impl Cli {
             }
         }
     }
+}
+
+fn firewall(bootstrap: &Bootstrap, action: &FirewallCommand) -> Result<ExitCode> {
+    use crate::firewall::{CONFIRM_KEY, PENDING_KEY};
+    let store = open_store(bootstrap)?;
+    let pending: Option<hearthgate_firewall::Pending> = store
+        .meta_get(PENDING_KEY)?
+        .and_then(|p| serde_json::from_str(&p).ok());
+    match action {
+        FirewallCommand::Status => {
+            let state = store.current_state()?;
+            let fw = &state.firewall;
+            if fw.enabled {
+                println!(
+                    "The firewall is on: {} rule(s), {} blocklist(s), {} blocked countr{}.",
+                    fw.rules.len(),
+                    fw.blocklists.iter().filter(|b| b.enabled).count(),
+                    fw.countries.len(),
+                    if fw.countries.len() == 1 { "y" } else { "ies" }
+                );
+                println!(
+                    "LAN access to every port: {}.",
+                    if fw.allow_lan { "yes" } else { "no" }
+                );
+            } else {
+                println!("The firewall is off.");
+            }
+            match pending {
+                Some(p) if !p.expired() => println!(
+                    "Revision {} changed it. Confirm within {}s with `hearthgate firewall confirm`, \
+                     or it is undone.",
+                    p.revision,
+                    p.seconds_left()
+                ),
+                _ => {}
+            }
+        }
+        FirewallCommand::Confirm => match pending {
+            Some(p) if !p.expired() => {
+                store.meta_set(CONFIRM_KEY, &p.revision.to_string())?;
+                println!("Kept the firewall change from revision {}.", p.revision);
+            }
+            Some(_) => {
+                println!("Too late: the change has expired and is being undone.");
+                return Ok(ExitCode::FAILURE);
+            }
+            None => {
+                println!("No firewall change is waiting for confirmation.");
+                return Ok(ExitCode::FAILURE);
+            }
+        },
+        FirewallCommand::Off => {
+            let mut state = store.current_state()?;
+            if !state.firewall.enabled {
+                println!("The firewall is already off.");
+                return Ok(ExitCode::SUCCESS);
+            }
+            state.firewall.enabled = false;
+            let applied = store.apply(
+                &state,
+                &author(),
+                "Turn the firewall off from the command line",
+            )?;
+            println!(
+                "Revision {}: the firewall is off. A running Hearthgate removes its rules within a \
+                 second.",
+                applied.meta().id
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn admin_access(bootstrap: &Bootstrap, reset: bool) -> Result<ExitCode> {
@@ -285,6 +374,14 @@ fn apply(bootstrap: &Bootstrap, file: &Path, message: &str, dry_run: bool) -> Re
         Applied::Created(meta) => {
             print!("{changes}");
             println!("Applied as revision {}: {}.", meta.id, summary(&state));
+            if state.firewall.enabled && state.firewall != current.firewall {
+                println!(
+                    "The firewall changed. Check that you can still connect (for example open a \
+                     new SSH session), then run `hearthgate firewall confirm` within {} seconds, \
+                     or the change is undone.",
+                    hearthgate_firewall::CONFIRM_WINDOW.as_secs()
+                );
+            }
         }
     }
     Ok(ExitCode::SUCCESS)

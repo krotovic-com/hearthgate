@@ -171,6 +171,8 @@ pub struct HttpContext {
     client: Client<HttpConnector, ProxyBody>,
     pub challenges: Arc<HttpChallenges>,
     local: Mutex<HashMap<u16, u64>>,
+    /// Where misbehaving clients are reported.
+    pub abuse: Arc<crate::abuse::AbuseReports>,
 }
 
 impl std::fmt::Debug for HttpContext {
@@ -193,6 +195,7 @@ impl HttpContext {
             client,
             challenges,
             local: Mutex::new(HashMap::new()),
+            abuse: Arc::default(),
         }
     }
 
@@ -241,13 +244,18 @@ pub async fn serve<I>(
             Arc::clone(&ctx),
         );
         async move {
+            let probe = crate::abuse::is_probe_path(req.uri().path());
             let resp = handle(req, &info, &table, &limits, &ctx).await;
-            if resp.extensions().get::<Local>().is_some() {
+            let local = resp.extensions().get::<Local>().is_some();
+            if local {
                 *ctx.local
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .entry(resp.status().as_u16())
                     .or_default() += 1;
+            }
+            if let Some(signal) = signal_for(resp.status(), local, probe) {
+                ctx.abuse.report(info.peer.ip(), signal);
             }
             Ok::<_, Infallible>(resp)
         }
@@ -270,6 +278,18 @@ pub async fn serve<I>(
             conn.as_mut().graceful_shutdown();
             let _ = conn.await;
         }
+    }
+}
+
+/// What a response says about the client, if anything.
+fn signal_for(status: StatusCode, local: bool, probe: bool) -> Option<crate::abuse::Signal> {
+    use crate::abuse::Signal;
+    match (status, local) {
+        (StatusCode::NOT_FOUND, _) if probe => Some(Signal::Probe),
+        // Hearthgate's own 404 and 400: no route for the host, or no host.
+        (StatusCode::NOT_FOUND | StatusCode::BAD_REQUEST, true) => Some(Signal::UnknownHost),
+        (StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN, false) => Some(Signal::AuthFailure),
+        _ => None,
     }
 }
 

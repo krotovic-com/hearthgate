@@ -752,13 +752,16 @@ dependencies = [
  "clap",
  "hearthgate-acme",
  "hearthgate-api",
+ "hearthgate-firewall",
  "hearthgate-model",
  "hearthgate-proxy",
  "hearthgate-services",
  "hearthgate-store",
+ "hearthgate-upnp",
  "ipnet",
  "sd-notify",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -796,11 +799,14 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "hearthgate-acme",
+ "hearthgate-firewall",
  "hearthgate-model",
  "hearthgate-proxy",
  "hearthgate-store",
+ "hearthgate-upnp",
  "hmac",
  "http-body-util",
+ "humantime",
  "hyper",
  "hyper-util",
  "if-addrs",
@@ -823,10 +829,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearthgate-firewall"
+version = "0.0.0-dev"
+dependencies = [
+ "bytes",
+ "hearthgate-model",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "ipnet",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "hearthgate-model"
 version = "0.0.0-dev"
 dependencies = [
  "humantime-serde",
+ "ipnet",
  "serde",
  "serde_json",
  "similar",
@@ -884,6 +912,22 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "hearthgate-upnp"
+version = "0.0.0-dev"
+dependencies = [
+ "bytes",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "serde",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -1022,6 +1066,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
+ "log",
  "rustls",
  "rustls-native-certs",
  "rustls-platform-verifier",

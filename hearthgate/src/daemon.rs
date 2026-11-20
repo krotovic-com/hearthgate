@@ -26,6 +26,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Bootstrap;
+use crate::firewall::FirewallCtl;
 
 /// How often the store is checked for a new revision.
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -111,24 +112,76 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     let runtime = Arc::new(RwLock::new(RuntimeInfo::default()));
     let api_changed = Arc::new(Notify::new());
     let live = Arc::new(hearthgate_api::Live::new(logs));
+    let perimeter = Arc::new(hearthgate_firewall::Perimeter::new(
+        hearthgate_firewall::Nft::default(),
+    ));
+    let router = Arc::new(hearthgate_upnp::Router::default());
     hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
-    if bootstrap.admin.disabled() {
+    let access = if bootstrap.admin.disabled() {
         info!("admin API is off (admin.listen = [])");
+        None
     } else {
-        start_admin(
-            &bootstrap,
-            &store,
-            &gateway,
-            &certs,
-            &runtime,
-            &api_changed,
-            &live,
-            &stop,
+        Some(
+            start_admin(
+                &bootstrap,
+                &store,
+                &gateway,
+                &certs,
+                &runtime,
+                &api_changed,
+                &live,
+                &perimeter,
+                &router,
+                &stop,
+            )
+            .await?,
         )
-        .await?;
-    }
+    };
 
+    let (firewall_tx, firewall_rx) = watch::channel(hearthgate_model::Firewall::default());
+    tokio::spawn(hearthgate_firewall::feeds::run(
+        Arc::clone(&perimeter),
+        bootstrap.data_dir.join("blocklists"),
+        firewall_rx.clone(),
+        stop.clone(),
+    ));
+    {
+        // Abuse reports from the proxy feed the automatic bans.
+        let (signal_tx, mut signal_rx) = tokio::sync::mpsc::channel(4096);
+        gateway.abuse().connect(signal_tx);
+        let (report_tx, report_rx) = tokio::sync::mpsc::channel(4096);
+        tokio::spawn(async move {
+            while let Some((ip, signal)) = signal_rx.recv().await {
+                let signal: hearthgate_proxy::abuse::Signal = signal;
+                if report_tx
+                    .send((ip, signal.points(), signal.describe()))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        tokio::spawn(hearthgate_firewall::bans::run(
+            Arc::clone(&perimeter),
+            report_rx,
+            firewall_rx,
+            stop.clone(),
+        ));
+    }
+    let (upnp_tx, upnp_rx) = watch::channel(hearthgate_upnp::Wanted::default());
+    let upnp_task = tokio::spawn(hearthgate_upnp::run(
+        Arc::clone(&router),
+        upnp_rx,
+        hearthgate_upnp::Options::default(),
+        stop.clone(),
+    ));
+    let mut firewall = FirewallCtl::new(Arc::clone(&perimeter), Arc::clone(&store), access);
+    firewall.recover().await;
     let mut daemon = Daemon {
+        firewall,
+        firewall_settings: firewall_tx,
+        upnp: upnp_tx,
         health: HealthChecker::default(),
         store,
         certs,
@@ -164,7 +217,11 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
-            _ = tick.tick() => daemon.reconcile(false).await,
+            _ = tick.tick() => {
+                // A rollback is a new revision, which reconcile picks up.
+                daemon.firewall.tick().await;
+                daemon.reconcile(false).await;
+            }
             () = api_changed.notified() => daemon.reconcile(false).await,
             () = containers.changed.notified() => {
                 info!("container addresses changed");
@@ -181,6 +238,8 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     }
     notify(&[NotifyState::Stopping]);
     stop.cancel();
+    // Give the router a moment to drop its forwards.
+    let _ = tokio::time::timeout(Duration::from_secs(10), upnp_task).await;
     daemon.health.stop();
     info!(
         "stopping; open connections get {:?} to finish",
@@ -191,6 +250,11 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
 }
 
 struct Daemon {
+    firewall: FirewallCtl,
+    /// Firewall settings for the blocklist and ban tasks.
+    firewall_settings: watch::Sender<hearthgate_model::Firewall>,
+    /// Ports the router should forward.
+    upnp: watch::Sender<hearthgate_upnp::Wanted>,
     health: HealthChecker,
     store: Arc<Store>,
     certs: Arc<CertStore>,
@@ -249,6 +313,20 @@ impl Daemon {
         self.cert_specs.clone_from(&plan.certs);
         self.load_certificates();
         let errors = self.gateway.apply(&plan).await;
+        self.firewall
+            .reconcile(&state, id, self.applied.is_none())
+            .await;
+        let wanted = upnp_wanted(&state);
+        self.upnp.send_if_modified(|w| {
+            let changed = *w != wanted;
+            *w = wanted;
+            changed
+        });
+        self.firewall_settings.send_if_modified(|fw| {
+            let changed = *fw != state.firewall;
+            fw.clone_from(&state.firewall);
+            changed
+        });
         self.health.update(
             health::jobs(&state, self.gateway.upstreams()),
             self.gateway.upstreams(),
@@ -287,6 +365,7 @@ impl Daemon {
 
     fn publish_runtime(&self) {
         let mut problems = self.bind_errors.clone();
+        problems.extend(self.firewall.problem.iter().cloned());
         problems.extend(self.cert_notes.iter().cloned());
         problems.extend(
             self.acme_problems
@@ -318,6 +397,26 @@ impl Daemon {
         }
         self.cert_notes = notes;
         self.gateway.certificates().set(table);
+    }
+}
+
+/// The ports the router should forward: every public port.
+fn upnp_wanted(state: &DesiredState) -> hearthgate_upnp::Wanted {
+    use hearthgate_upnp::Protocol;
+    let mut ports = Vec::new();
+    for listener in state.interfaces.iter().flat_map(|i| &i.listeners) {
+        if listener.tcp() {
+            ports.push((listener.port, Protocol::Tcp));
+        }
+        if listener.udp() {
+            ports.push((listener.port, Protocol::Udp));
+        }
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    hearthgate_upnp::Wanted {
+        enabled: state.router.upnp,
+        ports,
     }
 }
 
@@ -376,8 +475,10 @@ async fn start_admin(
     runtime: &Arc<RwLock<RuntimeInfo>>,
     changed: &Arc<Notify>,
     live: &Arc<hearthgate_api::Live>,
+    perimeter: &Arc<hearthgate_firewall::Perimeter>,
+    router: &Arc<hearthgate_upnp::Router>,
     stop: &CancellationToken,
-) -> Result<()> {
+) -> Result<Arc<hearthgate_api::AccessControl>> {
     use hearthgate_api::access::{Resolved, Source, TlsMode};
     let admin = &bootstrap.admin;
     let token = hearthgate_api::load_or_create_token(&bootstrap.data_dir)
@@ -428,6 +529,8 @@ async fn start_admin(
         auth: Arc::default(),
         access: Arc::clone(&access),
         live: Arc::clone(live),
+        perimeter: Arc::clone(perimeter),
+        router: Arc::clone(router),
     };
     let wanted = {
         let store = Arc::clone(store);
@@ -457,5 +560,5 @@ async fn start_admin(
              (`hearthgate setup-code` shows it again)"
         );
     }
-    Ok(())
+    Ok(access)
 }

@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::{Firewall, Router};
+
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -25,6 +27,12 @@ pub struct DesiredState {
     /// Routes connecting interface listeners to services.
     #[serde(default)]
     pub routes: Vec<Route>,
+    /// Inbound firewall, blocklists and automatic bans.
+    #[serde(default, skip_serializing_if = "Firewall::is_default")]
+    pub firewall: Firewall,
+    /// Router port forwarding.
+    #[serde(default, skip_serializing_if = "Router::is_default")]
+    pub router: Router,
 }
 
 /// Settings for automatic certificates (ACME).
@@ -173,6 +181,11 @@ pub struct Interface {
     pub certificate: Option<String>,
     /// Ports this interface listens on.
     pub listeners: Vec<Listener>,
+    /// New connections per second accepted from one client address across
+    /// this interface's ports, enforced by the firewall. Unset means no
+    /// limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<u32>,
 }
 
 impl Interface {

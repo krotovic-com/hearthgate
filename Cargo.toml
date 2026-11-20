@@ -20,6 +20,8 @@ hearthgate-proxy = { path = "crates/hearthgate-proxy" }
 hearthgate-acme = { path = "crates/hearthgate-acme" }
 hearthgate-services = { path = "crates/hearthgate-services" }
 hearthgate-api = { path = "crates/hearthgate-api" }
+hearthgate-firewall = { path = "crates/hearthgate-firewall" }
+hearthgate-upnp = { path = "crates/hearthgate-upnp" }
 
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
@@ -38,6 +40,7 @@ if-addrs = "0.13"
 ipnet = { version = "2", features = ["serde"] }
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "native-tokio", "http1", "tls12", "logging"] }
 humantime-serde = "1"
 instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls", "rcgen"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }

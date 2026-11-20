@@ -3,7 +3,9 @@ use std::fmt;
 use std::net::IpAddr;
 
 use crate::hostname::{host_matches, is_valid_hostname};
-use crate::{DesiredState, Interface, ListenerMode, PortRef, Route, Service, ServiceKind};
+use crate::{
+    DesiredState, Interface, ListenerMode, PortRef, Route, RuleAction, Service, ServiceKind,
+};
 
 /// One problem found in a desired state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +85,7 @@ impl DesiredState {
             validate_service(service, &mut c);
         }
         self.validate_routes(&mut c);
+        self.validate_firewall(&mut c);
         if c.0.is_empty() {
             Ok(())
         } else {
@@ -136,6 +139,79 @@ impl DesiredState {
                  to agree to the certificate authority's terms of service, or give the interface \
                  a manual certificate",
             );
+        }
+    }
+
+    fn validate_firewall(&self, c: &mut Collector) {
+        let fw = &self.firewall;
+        let mut seen = BTreeSet::new();
+        for rule in &fw.rules {
+            let path = format!("firewall.rules[{}]", rule.name);
+            if !is_valid_name(&rule.name) {
+                c.push(&path, format!("invalid name: {NAME_RULE}"));
+            }
+            if !seen.insert(rule.name.as_str()) {
+                c.push(&path, "name is used more than once");
+            }
+            if rule.sources.is_empty() && rule.ports.is_empty() && rule.action == RuleAction::Allow
+            {
+                c.push(
+                    &path,
+                    "allows everything from everywhere; give it sources or ports",
+                );
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for list in &fw.blocklists {
+            let path = format!("firewall.blocklists[{}]", list.name);
+            if !is_valid_name(&list.name) {
+                c.push(&path, format!("invalid name: {NAME_RULE}"));
+            }
+            if !seen.insert(list.name.as_str()) {
+                c.push(&path, "name is used more than once");
+            }
+            if !list.url.starts_with("https://") {
+                c.push(&path, "the URL must start with https://");
+            }
+            if list.refresh < std::time::Duration::from_secs(600) {
+                c.push(&path, "refresh at most every 10 minutes");
+            }
+        }
+        for country in &fw.countries {
+            if country.len() != 2 || !country.bytes().all(|b| b.is_ascii_lowercase()) {
+                c.push(
+                    "firewall.countries",
+                    format!("`{country}` is not a two-letter country code"),
+                );
+            }
+        }
+        for net in &fw.block {
+            if crate::is_special_net(net) {
+                c.push(
+                    "firewall.block",
+                    format!(
+                        "{net} is a private or local network; block it with a deny rule instead"
+                    ),
+                );
+            }
+        }
+        let ban = &fw.auto_ban;
+        if ban.threshold == 0 {
+            c.push("firewall.auto_ban.threshold", "must be greater than zero");
+        }
+        if ban.window.is_zero() || ban.ban_time.is_zero() {
+            c.push(
+                "firewall.auto_ban",
+                "window and ban_time must be greater than zero",
+            );
+        }
+        for interface in &self.interfaces {
+            if interface.rate_limit == Some(0) {
+                c.push(
+                    format!("interfaces[{}].rate_limit", interface.name),
+                    "must be greater than zero",
+                );
+            }
         }
     }
 

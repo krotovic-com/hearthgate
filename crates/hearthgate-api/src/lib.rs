@@ -9,6 +9,7 @@
 pub mod access;
 mod account;
 mod auth;
+pub mod firewall;
 pub mod live;
 mod ratelimit;
 mod routes;
@@ -81,6 +82,10 @@ pub struct ApiState {
     pub access: Arc<AccessControl>,
     /// Traffic rates and the log tail.
     pub live: Arc<Live>,
+    /// The firewall runtime.
+    pub perimeter: Arc<hearthgate_firewall::Perimeter>,
+    /// Router port forwarding state.
+    pub router: Arc<hearthgate_upnp::Router>,
 }
 
 impl ApiState {
@@ -165,7 +170,12 @@ pub(crate) async fn accept_loop(
             drop(stream);
             continue;
         }
-        let app = app.clone().layer(axum::Extension(auth::ClientAddr(peer)));
+        let app = app
+            .clone()
+            .layer(axum::Extension(auth::ClientAddr(peer)))
+            .layer(axum::Extension(firewall::Accepted(
+                std::time::Instant::now(),
+            )));
         let tls = tls.read().unwrap_or_else(PoisonError::into_inner).clone();
         let stop = stop.clone();
         tokio::spawn(async move {

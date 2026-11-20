@@ -67,6 +67,10 @@ async fn start(options: Options) -> Api {
             CancellationToken::new(),
         )),
         live: Arc::default(),
+        perimeter: Arc::new(hearthgate_firewall::Perimeter::new(
+            hearthgate_firewall::Nft::new(vec!["false".into()]),
+        )),
+        router: Arc::default(),
     };
     let listener = TcpListener::bind(options.bind).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -804,6 +808,10 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         auth: Arc::default(),
         access: Arc::clone(&access),
         live: Arc::default(),
+        perimeter: Arc::new(hearthgate_firewall::Perimeter::new(
+            hearthgate_firewall::Nft::new(vec!["false".into()]),
+        )),
+        router: Arc::default(),
     };
     let first = free_port();
     access

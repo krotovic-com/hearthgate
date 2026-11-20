@@ -35,7 +35,9 @@ use crate::auth::Principal;
         crate::account::session_info, crate::account::setup, crate::account::login,
         crate::account::logout, crate::account::change_password, crate::account::totp_begin,
         crate::account::totp_enable, crate::account::totp_disable, crate::account::list_tokens,
-        crate::account::create_token, crate::account::delete_token
+        crate::account::create_token, crate::account::delete_token,
+        crate::firewall::info, crate::firewall::recent, crate::firewall::confirm,
+        crate::firewall::ban, crate::firewall::unban, crate::firewall::router
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -47,13 +49,18 @@ use crate::auth::Principal;
         crate::account::ApiTokenInfo, crate::account::NewToken, crate::account::CreatedToken,
         HostInfo, PreviewResponse, DiffResponse, crate::live::Rate, crate::live::TrafficBucket,
         crate::live::LogLine, crate::access::AccessSettings, crate::access::AccessMode,
-        crate::access::AccessInfo, crate::access::Resolved
+        crate::access::AccessInfo, crate::access::Resolved, FirewallSummary,
+        crate::firewall::FirewallInfo, crate::firewall::PendingInfo,
+        crate::firewall::DroppedInfo, crate::firewall::FeedInfo, crate::firewall::BanInfo,
+        crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
+        crate::firewall::RouterInfo, crate::firewall::MappingInfo
     )),
     modifiers(&Security),
     tags(
         (name = "hearthgate"),
         (name = "auth", description = "Dashboard login and API tokens"),
-        (name = "settings", description = "Settings kept outside the desired state")
+        (name = "settings", description = "Settings kept outside the desired state"),
+        (name = "firewall", description = "Firewall status, bans and change confirmation")
     )
 )]
 pub struct ApiDoc;
@@ -108,6 +115,15 @@ pub fn router(state: ApiState) -> Router {
             "/api/v1/settings/admin-access",
             get(crate::access::get_access).put(crate::access::put_access),
         )
+        .route("/api/v1/firewall", get(crate::firewall::info))
+        .route("/api/v1/router", get(crate::firewall::router))
+        .route("/api/v1/firewall/recent", get(crate::firewall::recent))
+        .route("/api/v1/firewall/confirm", post(crate::firewall::confirm))
+        .route("/api/v1/firewall/bans", post(crate::firewall::ban))
+        .route(
+            "/api/v1/firewall/bans/{address}",
+            axum::routing::delete(crate::firewall::unban),
+        )
         .route("/api/v1/revisions/{id}/rollback", post(rollback))
         .route("/api/v1/certificates", get(certificates))
         .route("/api/v1/openapi.json", get(openapi))
@@ -119,6 +135,10 @@ pub fn router(state: ApiState) -> Router {
             crate::auth::authenticate,
         ))
         .layer(axum::middleware::from_fn(crate::ui::security_headers))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::firewall::close_while_pending,
+        ))
         .with_state(state)
 }
 
@@ -315,6 +335,15 @@ pub struct StatusResponse {
     /// Things that need attention.
     pub problems: Vec<String>,
     pub host: HostInfo,
+    /// Whether the firewall is installed, and a change waiting for
+    /// confirmation.
+    pub firewall: FirewallSummary,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FirewallSummary {
+    pub installed: bool,
+    pub pending: Option<crate::firewall::PendingInfo>,
 }
 
 /// Gateway status: listeners, upstream health and problems.
@@ -358,7 +387,17 @@ pub(crate) async fn status_snapshot(state: &ApiState) -> Result<StatusResponse, 
             rate: state.live.rate(&u.service, u.port),
         })
         .collect();
+    let fw = state.perimeter.status();
     Ok(StatusResponse {
+        firewall: FirewallSummary {
+            installed: fw.installed,
+            pending: fw
+                .pending
+                .map(|(revision, seconds_left)| crate::firewall::PendingInfo {
+                    revision,
+                    seconds_left,
+                }),
+        },
         version: crate_version(),
         revision: runtime.revision,
         latest_revision: latest,

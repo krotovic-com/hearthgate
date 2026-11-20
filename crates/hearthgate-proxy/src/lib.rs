@@ -5,6 +5,7 @@
 //! running sockets to a new plan without a restart, keeping open connections
 //! on sockets that did not change.
 
+pub mod abuse;
 pub mod gateway;
 pub mod http;
 pub mod l4;

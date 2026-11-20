@@ -9,10 +9,12 @@
 //! certificates, health) live in the subsystem crates, which compile a
 //! validated [`DesiredState`] into their own runtime structures.
 
+mod firewall;
 mod hostname;
 mod types;
 mod validate;
 
+pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};
 pub use types::*;
 pub use validate::{ValidationError, ValidationErrors};
@@ -112,6 +114,25 @@ impl DesiredState {
             route.hosts.dedup();
         }
         self.routes.sort_by(|a, b| a.name.cmp(&b.name));
+        let fw = &mut self.firewall;
+        for rule in &mut fw.rules {
+            rule.name = rule.name.trim().to_owned();
+            rule.sources = ipnet::IpNet::aggregate(&rule.sources);
+            rule.ports.sort();
+            rule.ports.dedup();
+        }
+        fw.allow = ipnet::IpNet::aggregate(&fw.allow);
+        fw.block = ipnet::IpNet::aggregate(&fw.block);
+        for list in &mut fw.blocklists {
+            list.name = list.name.trim().to_owned();
+            list.url = list.url.trim().to_owned();
+        }
+        fw.blocklists.sort_by(|a, b| a.name.cmp(&b.name));
+        for country in &mut fw.countries {
+            *country = country.trim().to_ascii_lowercase();
+        }
+        fw.countries.sort();
+        fw.countries.dedup();
         self
     }
 
