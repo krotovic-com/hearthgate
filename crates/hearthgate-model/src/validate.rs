@@ -114,6 +114,21 @@ impl DesiredState {
                 c.push("acme.directory", "must be an http(s) URL");
             }
         }
+        if self.acme.renew_before.is_zero() {
+            c.push("acme.renew_before", "must be greater than zero");
+        }
+        for interface in self.interfaces.iter().filter(|i| i.wants_acme()) {
+            let has_http = interface
+                .listeners
+                .iter()
+                .any(|l| l.mode == ListenerMode::Http);
+            if self.acme.challenge == Some(crate::AcmeChallenge::Http01) && !has_http {
+                c.push(
+                    format!("interfaces[{}]", interface.name),
+                    "acme.challenge is http-01, but the interface has no http listener to answer it",
+                );
+            }
+        }
         if self.interfaces.iter().any(Interface::wants_acme) && !self.acme.accept_terms {
             c.push(
                 "acme.accept_terms",

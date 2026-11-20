@@ -11,16 +11,19 @@ publish.workspace = true
 [dependencies]
 hearthgate-model.workspace = true
 hearthgate-proxy.workspace = true
+instant-acme.workspace = true
 rcgen.workspace = true
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 x509-parser.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

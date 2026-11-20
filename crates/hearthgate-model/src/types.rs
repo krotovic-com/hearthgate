@@ -49,6 +49,24 @@ pub struct AcmeSettings {
     /// Renew a certificate when it has less than this long left.
     #[serde(default = "defaults::renew_before", with = "humantime_serde")]
     pub renew_before: Duration,
+    /// Challenge type. By default `http-01` when the interface has an
+    /// `http` listener (normally port 80), otherwise `tls-alpn-01` on its
+    /// `https` listener (normally port 443).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub challenge: Option<AcmeChallenge>,
+    /// PEM file with the root certificate of a private ACME server's API,
+    /// for example a home CA or Pebble in tests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory_root: Option<String>,
+}
+
+/// ACME challenge type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AcmeChallenge {
+    #[serde(rename = "http-01")]
+    Http01,
+    #[serde(rename = "tls-alpn-01")]
+    TlsAlpn01,
 }
 
 impl Default for AcmeSettings {
@@ -59,6 +77,8 @@ impl Default for AcmeSettings {
             staging: false,
             accept_terms: false,
             renew_before: defaults::renew_before(),
+            challenge: None,
+            directory_root: None,
         }
     }
 }

@@ -9,12 +9,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use hearthgate_acme::CertStore;
+use hearthgate_acme::{CertJob, CertStore, Issuer, Outcome, acme};
+use hearthgate_model::AcmeSettings;
 use hearthgate_model::DesiredState;
 use hearthgate_proxy::plan::CertSpec;
 use hearthgate_proxy::{Gateway, NoContainers, compile};
 use hearthgate_store::Store;
 use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::watch;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -49,12 +51,24 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
             bootstrap.data_dir.display()
         )
     })?);
+    let gateway = Arc::new(Gateway::new());
+    let certs = Arc::new(CertStore::new(&bootstrap.data_dir));
+    let issuer = Arc::new(Issuer::new(
+        &bootstrap.data_dir,
+        Arc::clone(&certs),
+        Arc::clone(gateway.certificates()),
+        Arc::clone(gateway.http_challenges()),
+    ));
+    let (acme_tx, acme_rx) = watch::channel((AcmeSettings::default(), Vec::new()));
+    let acme_task = tokio::spawn(acme_loop(Arc::clone(&issuer), acme_rx));
     let mut daemon = Daemon {
         store,
-        certs: CertStore::new(&bootstrap.data_dir),
+        certs,
+        issuer,
+        acme: acme_tx,
         cert_generation: String::new(),
         cert_specs: Vec::new(),
-        gateway: Arc::new(Gateway::new()),
+        gateway,
         applied: None,
         retry_at: None,
         drain: DesiredState::default().limits.drain_timeout,
@@ -77,6 +91,7 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
             _ = interrupt.recv() => break,
         }
     }
+    acme_task.abort();
     info!(
         "stopping; open connections get {:?} to finish",
         daemon.drain
@@ -90,7 +105,10 @@ const BIND_RETRY: Duration = Duration::from_secs(10);
 
 struct Daemon {
     store: Arc<Store>,
-    certs: CertStore,
+    certs: Arc<CertStore>,
+    issuer: Arc<Issuer>,
+    /// Automatic certificate work for the ACME task.
+    acme: watch::Sender<(AcmeSettings, Vec<CertJob>)>,
     /// Last seen certificate store generation.
     cert_generation: String,
     /// Certificates the running revision needs.
@@ -149,6 +167,13 @@ impl Daemon {
             );
             self.retry_at = Some(tokio::time::Instant::now() + BIND_RETRY);
         }
+        // Challenges are answered by the listeners, so hand the work to the
+        // ACME task only once they are up.
+        let work = (state.acme.clone(), acme::jobs(&state));
+        if *self.acme.borrow() != work {
+            self.issuer.reset_backoff();
+            let _ = self.acme.send(work);
+        }
         if self.applied != Some(key) {
             if let Some(id) = id {
                 info!("running revision {id}");
@@ -176,5 +201,28 @@ impl Daemon {
             }
         }
         self.gateway.certificates().set(table);
+    }
+}
+
+/// How often certificates are checked for renewal.
+const RENEWAL_CHECK: Duration = Duration::from_secs(3600);
+
+/// Issues and renews automatic certificates in the background. New
+/// certificates land in the store, and the daemon's next tick loads them.
+async fn acme_loop(issuer: Arc<Issuer>, mut work: watch::Receiver<(AcmeSettings, Vec<CertJob>)>) {
+    loop {
+        let (settings, jobs) = work.borrow_and_update().clone();
+        let mut next = RENEWAL_CHECK;
+        if !jobs.is_empty() {
+            for (_, outcome) in issuer.run(&settings, &jobs).await {
+                if let Outcome::Backoff { until } = outcome {
+                    next = next.min(until.saturating_duration_since(std::time::Instant::now()));
+                }
+            }
+        }
+        tokio::select! {
+            changed = work.changed() => if changed.is_err() { return },
+            () = tokio::time::sleep(next.max(Duration::from_secs(1))) => {}
+        }
     }
 }
