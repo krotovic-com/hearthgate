@@ -8,6 +8,7 @@
 pub mod gateway;
 pub mod http;
 pub mod l4;
+pub mod metrics;
 pub mod plan;
 pub mod pool;
 pub mod tls;

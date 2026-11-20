@@ -1,0 +1,26 @@
+# Hearthgate bootstrap settings: /etc/hearthgate/hearthgate.toml
+#
+# Only what Hearthgate needs before it can open its database lives here.
+# Interfaces, services and routes are stored as revisions in the database and
+# changed with `hearthgate apply FILE` or the admin API, never in this file.
+
+# Where the state database, certificates and keys are kept.
+data_dir = "/var/lib/hearthgate"
+
+# Log filter, for example "info" or "hearthgate=debug,info".
+log = "info"
+
+[admin]
+# Addresses the admin API listens on. Keep it on loopback, or add your
+# server's LAN address, for example "192.168.1.10:7380". Never 0.0.0.0.
+listen = ["127.0.0.1:7380"]
+# Clients outside these ranges are disconnected before a byte is read, even
+# if `listen` is misconfigured.
+allow = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10"]
+# Serve /metrics without the admin token (to clients in `allow`).
+metrics_without_token = false
+
+[docker]
+# Read-only discovery of containers for `kind = "docker"` services.
+enabled = true
+socket = "/var/run/docker.sock"

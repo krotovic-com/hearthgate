@@ -127,6 +127,13 @@ impl Gateway {
         &self.challenges
     }
 
+    /// Responses Hearthgate answered itself (redirects, 404, 502...), by
+    /// status code.
+    #[must_use]
+    pub fn local_responses(&self) -> Vec<(u16, u64)> {
+        self.ctx.http.local_responses()
+    }
+
     /// The upstream registry plans must be compiled against.
     #[must_use]
     pub fn upstreams(&self) -> &Arc<Upstreams> {

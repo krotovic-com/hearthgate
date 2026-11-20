@@ -124,7 +124,7 @@ impl Issuer {
                     info.remaining().as_secs() / 86_400
                 ),
                 Outcome::Failed(e) => {
-                    warn!(interface = %job.interface, "certificate request failed: {e}")
+                    warn!(interface = %job.interface, "certificate request failed: {e}");
                 }
                 Outcome::Valid(_) | Outcome::Backoff { .. } => {}
             }

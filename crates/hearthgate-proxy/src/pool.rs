@@ -84,6 +84,8 @@ pub struct UpstreamState {
     pub failures_total: AtomicU64,
     pub bytes_sent: AtomicU64,
     pub bytes_received: AtomicU64,
+    /// HTTP responses by status class (1xx to 5xx).
+    responses: [AtomicU64; 5],
 }
 
 impl UpstreamState {
@@ -101,7 +103,31 @@ impl UpstreamState {
             failures_total: AtomicU64::new(0),
             bytes_sent: AtomicU64::new(0),
             bytes_received: AtomicU64::new(0),
+            responses: Default::default(),
         }
+    }
+
+    /// Counts an HTTP response from this upstream.
+    pub fn record_response(&self, status: u16) {
+        if let Some(slot) = (status / 100)
+            .checked_sub(1)
+            .and_then(|i| self.responses.get(usize::from(i)))
+        {
+            slot.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// HTTP responses by status class: `(1, n)` for 1xx up to `(5, n)`.
+    #[must_use]
+    pub fn responses(&self) -> [(u8, u64); 5] {
+        let mut out = [(0, 0); 5];
+        for (i, slot) in self.responses.iter().enumerate() {
+            out[i] = (
+                u8::try_from(i + 1).unwrap_or(0),
+                slot.load(Ordering::Relaxed),
+            );
+        }
+        out
     }
 
     /// Current address.

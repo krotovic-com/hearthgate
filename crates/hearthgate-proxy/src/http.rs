@@ -162,10 +162,15 @@ impl HttpChallenges {
     }
 }
 
+/// Marks a response Hearthgate produced itself, for metrics.
+#[derive(Debug, Clone, Copy)]
+struct Local;
+
 /// Shared by every HTTP connection.
 pub struct HttpContext {
     client: Client<HttpConnector, ProxyBody>,
     pub challenges: Arc<HttpChallenges>,
+    local: Mutex<HashMap<u16, u64>>,
 }
 
 impl std::fmt::Debug for HttpContext {
@@ -184,7 +189,25 @@ impl HttpContext {
             .pool_idle_timeout(std::time::Duration::from_secs(60))
             .pool_timer(TokioTimer::new())
             .build(connector);
-        Self { client, challenges }
+        Self {
+            client,
+            challenges,
+            local: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Responses Hearthgate answered itself, by status code.
+    #[must_use]
+    pub fn local_responses(&self) -> Vec<(u16, u64)> {
+        let mut out: Vec<_> = self
+            .local
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect();
+        out.sort_unstable();
+        out
     }
 }
 
@@ -217,7 +240,17 @@ pub async fn serve<I>(
             Arc::clone(&limits),
             Arc::clone(&ctx),
         );
-        async move { Ok::<_, Infallible>(handle(req, &info, &table, &limits, &ctx).await) }
+        async move {
+            let resp = handle(req, &info, &table, &limits, &ctx).await;
+            if resp.extensions().get::<Local>().is_some() {
+                *ctx.local
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .entry(resp.status().as_u16())
+                    .or_default() += 1;
+            }
+            Ok::<_, Infallible>(resp)
+        }
     });
     let mut builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
     builder
@@ -251,6 +284,7 @@ fn text(status: StatusCode, body: &'static str) -> Response<ProxyBody> {
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/plain; charset=utf-8"),
     );
+    resp.extensions_mut().insert(Local);
     resp
 }
 
@@ -451,6 +485,7 @@ async fn handle(
         match sent {
             Ok(Ok(mut resp)) => {
                 state.record_success();
+                state.record_response(resp.status().as_u16());
                 if resp.status() == StatusCode::SWITCHING_PROTOCOLS {
                     if let Some(client_upgrade) = client_upgrade {
                         let upstream_upgrade = hyper::upgrade::on(&mut resp);

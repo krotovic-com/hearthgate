@@ -14,6 +14,7 @@ use hearthgate_model::AcmeSettings;
 use hearthgate_model::DesiredState;
 use hearthgate_proxy::plan::CertSpec;
 use hearthgate_proxy::{Gateway, NoContainers, compile};
+use hearthgate_services::{HealthChecker, health};
 use hearthgate_store::Store;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
@@ -62,6 +63,7 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
     let (acme_tx, acme_rx) = watch::channel((AcmeSettings::default(), Vec::new()));
     let acme_task = tokio::spawn(acme_loop(Arc::clone(&issuer), acme_rx));
     let mut daemon = Daemon {
+        health: HealthChecker::default(),
         store,
         certs,
         issuer,
@@ -104,6 +106,7 @@ async fn serve(bootstrap: Bootstrap) -> Result<()> {
 const BIND_RETRY: Duration = Duration::from_secs(10);
 
 struct Daemon {
+    health: HealthChecker,
     store: Arc<Store>,
     certs: Arc<CertStore>,
     issuer: Arc<Issuer>,
@@ -154,6 +157,10 @@ impl Daemon {
         self.cert_specs.clone_from(&plan.certs);
         self.load_certificates(true);
         let errors = self.gateway.apply(&plan).await;
+        self.health.update(
+            health::jobs(&state, self.gateway.upstreams()),
+            self.gateway.upstreams(),
+        );
         if errors.is_empty() {
             self.retry_at = None;
         } else {
