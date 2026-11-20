@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Releases run one at a time, in order, and are never cancelled midway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history and tags for version detection
+
+      - name: Compute next version
+        id: version
+        run: scripts/next-version.sh
+
+      - name: No release needed
+        if: steps.version.outputs.version == ''
+        run: echo "Only non-releasing commits since ${{ steps.version.outputs.previous || 'the start' }}. Nothing to publish."
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.version.outputs.version != ''
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,armv7-unknown-linux-musleabihf
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.version.outputs.version != ''
+
+      - uses: mlugg/setup-zig@v2
+        if: steps.version.outputs.version != ''
+        with:
+          version: 0.15.2
+
+      - uses: taiki-e/install-action@v2
+        if: steps.version.outputs.version != ''
+        with:
+          tool: cargo-zigbuild,git-cliff
+
+      - name: Test
+        if: steps.version.outputs.version != ''
+        run: cargo test --locked
+
+      - name: Build release archives
+        if: steps.version.outputs.version != ''
+        run: scripts/build-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Generate release notes
+        if: steps.version.outputs.version != ''
+        run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" --strip all --output notes.md
+
+      - name: Publish GitHub Release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz dist/SHA256SUMS \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file notes.md
