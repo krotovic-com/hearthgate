@@ -52,6 +52,7 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
 | `crates/hearthgate-firewall` | nftables ruleset, safe apply, blocklist feeds and automatic bans |
 | `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
+| `crates/hearthgate-vpn` | WireGuard interface, keys, peer configs and the internal DNS server |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
 | `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |
 
@@ -67,13 +68,14 @@ cargo test -p hearthgate-acme --test pebble
 
 They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
 
-### Firewall tests
+### Firewall and VPN tests
 
-`crates/hearthgate-firewall/tests/netns.rs` builds three network namespaces (outside, this host, LAN), loads real rulesets and scans the host from outside. It never touches your own host's rules, but it needs root, `ip` (iproute2) and `nft`, and is skipped without them. Run it with:
+`crates/hearthgate-firewall/tests/netns.rs` builds three network namespaces (outside, this host, LAN), loads real rulesets and scans the host from outside. `hearthgate/tests/vpn_netns.rs` starts real WireGuard tunnels from two client namespaces and checks what each peer can reach, and that a removed peer is cut off. They never touch your own host's network, but they need root, `ip` (iproute2), `nft`, `wg` (wireguard-tools), `python3` and the WireGuard kernel module or `wireguard-go`, and are skipped without them. Run them with:
 
 ```sh
-cargo test -p hearthgate-firewall --test netns --no-run
+cargo test -p hearthgate-firewall --test netns -p hearthgate --test vpn_netns --no-run
 sudo -E env "PATH=$PATH" cargo test -p hearthgate-firewall --test netns
+sudo -E env "PATH=$PATH" cargo test -p hearthgate --test vpn_netns
 ```
 
 The dashboard has one more end-to-end test, skipped by default, that turns the firewall on for real and checks that the dashboard confirms the change. Run it only as root in a throwaway machine or container: `HEARTHGATE_E2E_FIREWALL=1 npm run test:e2e`.

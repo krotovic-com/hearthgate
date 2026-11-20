@@ -15,7 +15,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** early development. The core gateway and its dashboard work: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a web dashboard reachable only from your LAN, a CLI and an admin API. The firewall, VPN and managed Docker stacks are next. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
+> **Status:** early development. The core gateway and its dashboard work: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a firewall with blocklists, router port forwarding, a WireGuard VPN with internal DNS, a web dashboard reachable only from your LAN or VPN, a CLI and an admin API. Managed Docker stacks are next. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
 
 ## What it does
 
@@ -30,11 +30,11 @@ Available now:
 - **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks, and Prometheus metrics.
 - **Firewall and blocklists.** An nftables firewall that closes every port no public interface opens, with your own rules, subscribed blocklists, country blocking, per-interface rate limits and automatic bans for clients that probe or fail to log in. Changes that would lock you out undo themselves after 60 seconds.
 - **Router port forwarding.** Optionally keeps your router's port forwards (UPnP or NAT-PMP) in line with your public interfaces, and warns about double NAT.
+- **Built-in VPN.** WireGuard devices reach every internal service, published or not, with internal DNS at `name.home.internal`. Add a device by scanning a QR code, and limit a device to a few services if you like.
 
 Coming next:
 
 - **Managed Docker.** Docker containers and stacks that Hearthgate starts and updates for you.
-- **Built-in VPN.** Peers reach every internal service, published or not, with internal DNS at `name.home.internal`.
 - **Optional AI assistant.** Bring your own provider (Claude, Gemini, OpenAI, Ollama and others) to review rules and troubleshoot services. Suggestions always wait for your approval, and logs are redacted before they leave the machine.
 
 ## Install

@@ -4,7 +4,8 @@ use std::net::IpAddr;
 
 use crate::hostname::{host_matches, is_valid_hostname};
 use crate::{
-    DesiredState, Interface, ListenerMode, PortRef, Route, RuleAction, Service, ServiceKind,
+    Access, DesiredState, Interface, ListenerMode, PortRef, Route, RuleAction, Service,
+    ServiceKind, is_wireguard_key, split_endpoint,
 };
 
 /// One problem found in a desired state.
@@ -51,7 +52,10 @@ impl Collector {
     }
 }
 
-fn is_valid_name(name: &str) -> bool {
+/// Whether `name` is a valid name for interfaces, services, routes, rules
+/// and peers.
+#[must_use]
+pub fn is_valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 63
         && !name.starts_with('-')
@@ -86,6 +90,7 @@ impl DesiredState {
         }
         self.validate_routes(&mut c);
         self.validate_firewall(&mut c);
+        self.validate_vpn(&mut c);
         if c.0.is_empty() {
             Ok(())
         } else {
@@ -139,6 +144,104 @@ impl DesiredState {
                  to agree to the certificate authority's terms of service, or give the interface \
                  a manual certificate",
             );
+        }
+    }
+
+    fn validate_vpn(&self, c: &mut Collector) {
+        let vpn = &self.vpn;
+        if vpn.port == 0 {
+            c.push("vpn.port", "must be a port from 1 to 65535");
+        }
+        let udp_taken = self
+            .interfaces
+            .iter()
+            .any(|i| i.listeners.iter().any(|l| l.port == vpn.port && l.udp()));
+        if vpn.enabled && udp_taken {
+            c.push(
+                "vpn.port",
+                format!("UDP port {} is used by a public interface", vpn.port),
+            );
+        }
+        if !(16..=30).contains(&vpn.subnet.prefix_len()) {
+            c.push(
+                "vpn.subnet",
+                "use a network from /16 to /30, such as 10.88.0.0/24",
+            );
+        }
+        if !vpn.subnet.network().is_private() {
+            c.push(
+                "vpn.subnet",
+                "use a private network (10/8, 172.16/12 or 192.168/16)",
+            );
+        }
+        if let Some(endpoint) = &vpn.endpoint {
+            let valid = split_endpoint(endpoint).is_some_and(|(host, _)| {
+                host.parse::<IpAddr>().is_ok() || is_valid_hostname(host, false)
+            });
+            if !valid {
+                c.push(
+                    "vpn.endpoint",
+                    "use a host name or address, with an optional :port",
+                );
+            }
+        }
+        let server = vpn.server_address();
+        let mut names = BTreeSet::new();
+        let mut keys = BTreeSet::new();
+        let mut addresses = BTreeSet::new();
+        for peer in &vpn.peers {
+            let path = format!("vpn.peers[{}]", peer.name);
+            if !is_valid_name(&peer.name) {
+                c.push(&path, format!("invalid name: {NAME_RULE}"));
+            }
+            if !names.insert(peer.name.as_str()) {
+                c.push(&path, "name is used more than once");
+            }
+            if !is_wireguard_key(&peer.public_key) {
+                c.push(
+                    &path,
+                    "public_key is not a WireGuard key (44 characters of base64)",
+                );
+            }
+            if !keys.insert(peer.public_key.as_str()) {
+                c.push(&path, "another peer has the same public key");
+            }
+            let ip = peer.address;
+            if !vpn.subnet.contains(&ip)
+                || ip == vpn.subnet.network()
+                || ip == vpn.subnet.broadcast()
+            {
+                c.push(
+                    &path,
+                    format!("address {ip} is not a host address in {}", vpn.subnet),
+                );
+            } else if ip == server {
+                c.push(&path, format!("address {ip} belongs to this machine"));
+            }
+            if !addresses.insert(ip) {
+                c.push(&path, format!("another peer has the address {ip}"));
+            }
+            if let Access::Services(list) = &peer.access {
+                for name in list {
+                    if !self.services.iter().any(|s| &s.name == name) {
+                        c.push(&path, format!("access: no service is called `{name}`"));
+                    }
+                }
+            }
+        }
+        let dns = &self.dns;
+        if !is_valid_hostname(&dns.zone, false) {
+            c.push("dns.zone", "use a domain such as home.internal");
+        }
+        for upstream in &dns.upstream {
+            let ok = upstream.parse::<IpAddr>().is_ok()
+                || upstream.parse::<std::net::SocketAddr>().is_ok();
+            if !ok {
+                c.push(
+                    "dns.upstream",
+                    format!("`{upstream}` is not an address, like 1.1.1.1 or 192.168.1.1:53"),
+                );
+            }
         }
     }
 

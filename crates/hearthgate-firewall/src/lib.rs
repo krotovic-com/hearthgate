@@ -14,4 +14,4 @@ pub mod ruleset;
 
 pub use nft::{Dropped, Nft, NftError, RecentDrop};
 pub use perimeter::{CONFIRM_WINDOW, ConfirmError, Pending, Perimeter, Status};
-pub use ruleset::{Dynamic, Inputs, OpenPort, Reason};
+pub use ruleset::{Dynamic, Inputs, OpenPort, Reason, VpnPolicy};

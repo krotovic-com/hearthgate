@@ -148,7 +148,7 @@ impl Perimeter {
     pub async fn apply(&self, inputs: &Inputs, force: bool) -> Result<(), NftError> {
         let _guard = self.apply_lock.lock().await;
         let was = self.lock().installed.clone();
-        if !inputs.firewall.enabled {
+        if !inputs.needs_table() {
             if was.is_some() || force || self.nft.installed().await {
                 self.nft.apply(&ruleset::remove()).await?;
                 info!("firewall is off; the hearthgate table was removed");
@@ -322,7 +322,7 @@ impl Perimeter {
     pub fn status(&self) -> Status {
         let s = self.lock();
         Status {
-            enabled: s.installed.is_some(),
+            enabled: s.installed.as_ref().is_some_and(|i| i.firewall.enabled),
             installed: s.installed.is_some(),
             error: s.error.clone(),
             pending: s.pending.as_ref().map(|p| (p.revision, p.seconds_left())),

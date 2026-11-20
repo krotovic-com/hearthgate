@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Firewall, Router};
+use crate::{Dns, Firewall, Router, Vpn};
 
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +33,12 @@ pub struct DesiredState {
     /// Router port forwarding.
     #[serde(default, skip_serializing_if = "Router::is_default")]
     pub router: Router,
+    /// The built-in WireGuard VPN and its peers.
+    #[serde(default, skip_serializing_if = "Vpn::is_default")]
+    pub vpn: Vpn,
+    /// Internal DNS for VPN peers.
+    #[serde(default, skip_serializing_if = "Dns::is_default")]
+    pub dns: Dns,
 }
 
 /// Settings for automatic certificates (ACME).

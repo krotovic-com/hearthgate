@@ -13,11 +13,13 @@ mod firewall;
 mod hostname;
 mod types;
 mod validate;
+mod vpn;
 
 pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};
 pub use types::*;
-pub use validate::{ValidationError, ValidationErrors};
+pub use validate::{ValidationError, ValidationErrors, is_valid_name};
+pub use vpn::*;
 
 /// Errors from reading a desired state document.
 #[derive(Debug, thiserror::Error)]
@@ -128,6 +130,20 @@ impl DesiredState {
             list.url = list.url.trim().to_owned();
         }
         fw.blocklists.sort_by(|a, b| a.name.cmp(&b.name));
+        for peer in &mut self.vpn.peers {
+            peer.name = peer.name.trim().to_owned();
+            peer.public_key = peer.public_key.trim().to_owned();
+            if let Access::Services(list) = &mut peer.access {
+                list.sort();
+                list.dedup();
+            }
+        }
+        self.vpn.peers.sort_by(|a, b| a.name.cmp(&b.name));
+        self.vpn.subnet = self.vpn.subnet.trunc();
+        if let Some(endpoint) = &mut self.vpn.endpoint {
+            *endpoint = endpoint.trim().to_ascii_lowercase();
+        }
+        self.dns.zone = self.dns.zone.trim().trim_matches('.').to_ascii_lowercase();
         for country in &mut fw.countries {
             *country = country.trim().to_ascii_lowercase();
         }

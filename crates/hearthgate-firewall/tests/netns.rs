@@ -191,6 +191,7 @@ fn inputs() -> Inputs {
         admin: Some((vec![7380], vec!["192.168.77.0/24".parse().unwrap()])),
         lan: vec!["192.168.77.0/24".parse().unwrap()],
         trusted_interfaces: Vec::new(),
+        vpn: None,
     }
 }
 

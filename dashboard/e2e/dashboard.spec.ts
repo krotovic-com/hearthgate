@@ -151,6 +151,62 @@ test.describe.serial('dashboard', () => {
     await page.getByRole('button', { name: 'Discard' }).click();
   });
 
+  test('adds a VPN device and shows its configuration once', async ({ page }) => {
+    await login(page);
+    await page.getByRole('link', { name: 'VPN peers', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'The VPN is off' })).toBeVisible();
+
+    // Devices connect to the public domain unless told otherwise.
+    await expect(page.getByText('Now app.example.test:51820.')).toBeVisible();
+    await page.getByLabel('Device name').fill('Kitchen tablet');
+    await expect(page.getByText('Gets address 10.88.0.2 and the name kitchen-tablet.home.internal.')).toBeVisible();
+    await page.getByLabel('Devices connect to').fill('vpn.example.test');
+    await page.getByLabel('Devices connect to').press('Tab');
+    await page.getByText('Only some services').click();
+    await page.getByRole('checkbox', { name: 'app' }).check();
+    await accessible(page);
+    await page.getByRole('button', { name: 'Create device' }).click();
+
+    const card = page.locator('#add-device');
+    await expect(card.getByRole('img', { name: 'WireGuard configuration for kitchen-tablet' })).toBeVisible();
+    await expect(card.getByText('kitchen-tablet gets 10.88.0.2. Apply the draft so it can connect.')).toBeVisible();
+    const download = page.waitForEvent('download');
+    await card.getByRole('link', { name: 'Download .conf' }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('kitchen-tablet.conf');
+    const conf = await new Promise<string>((ok, fail) => {
+      file.createReadStream().then((stream) => {
+        let text = '';
+        stream.on('data', (c) => (text += c));
+        stream.on('end', () => ok(text));
+        stream.on('error', fail);
+      }, fail);
+    });
+    expect(conf).toContain('Endpoint = vpn.example.test:51820');
+    expect(conf).toContain('DNS = 10.88.0.1, home.internal');
+    expect(conf).toMatch(/PrivateKey = [A-Za-z0-9+/]{43}=/);
+    await accessible(page);
+    await page.screenshot({ path: 'test-results/vpn-peers.png', fullPage: true });
+
+    // The device is in the draft, with the VPN turned on.
+    const row = page.getByRole('listitem').filter({ hasText: 'kitchen-tablet.home.internal' });
+    await expect(row.getByText('Not applied')).toBeVisible();
+    await expect(row.getByText('Only app')).toBeVisible();
+    await expect(page.getByText('Add VPN device kitchen-tablet')).toBeVisible();
+    await expect(page.getByText('Turn on the VPN')).toBeVisible();
+
+    await row.getByRole('button', { name: 'Edit kitchen-tablet' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit kitchen-tablet' });
+    await dialog.getByText('Everything').click();
+    await accessible(page);
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(row.getByText('Everything')).toBeVisible();
+
+    // Applying would start a real WireGuard interface, so leave it here.
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByText('No devices yet')).toBeVisible();
+  });
+
   // Installs a real nftables ruleset, so it only runs when asked for (as
   // root, in a throwaway machine or container).
   test('a firewall change is kept once the dashboard confirms it', async ({ page }) => {
@@ -176,6 +232,7 @@ test.describe.serial('dashboard', () => {
       ['Public interfaces', 'Public interfaces'],
       ['Services', 'Services'],
       ['Routes', 'Routes'],
+      ['VPN peers', 'VPN peers'],
       ['Firewall', 'Firewall'],
       ['History', 'History'],
       ['Settings', 'Settings'],

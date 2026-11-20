@@ -116,6 +116,10 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         hearthgate_firewall::Nft::default(),
     ));
     let router = Arc::new(hearthgate_upnp::Router::default());
+    let vpn_runtime = Arc::new(hearthgate_vpn::Runtime::new(
+        hearthgate_vpn::Device::new(hearthgate_vpn::INTERFACE, hearthgate_vpn::Tools::default()),
+        Some(bootstrap.data_dir.join("vpn")),
+    ));
     hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
     let access = if bootstrap.admin.disabled() {
         info!("admin API is off (admin.listen = [])");
@@ -132,6 +136,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
                 &live,
                 &perimeter,
                 &router,
+                &vpn_runtime,
                 &stop,
             )
             .await?,
@@ -176,10 +181,14 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         hearthgate_upnp::Options::default(),
         stop.clone(),
     ));
-    let mut firewall = FirewallCtl::new(Arc::clone(&perimeter), Arc::clone(&store), access);
+    let (vpn, dns_settings) = crate::vpn::VpnCtl::new(Arc::clone(&vpn_runtime));
+    tokio::spawn(hearthgate_vpn::dns::run(dns_settings, stop.clone()));
+    let mut firewall = FirewallCtl::new(Arc::clone(&perimeter), Arc::clone(&store), access.clone());
     firewall.recover().await;
     let mut daemon = Daemon {
         firewall,
+        vpn,
+        access,
         firewall_settings: firewall_tx,
         upnp: upnp_tx,
         health: HealthChecker::default(),
@@ -220,7 +229,8 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
             _ = tick.tick() => {
                 // A rollback is a new revision, which reconcile picks up.
                 daemon.firewall.tick().await;
-                daemon.reconcile(false).await;
+                let vpn_check = daemon.vpn.check().await;
+                daemon.reconcile(vpn_check).await;
             }
             () = api_changed.notified() => daemon.reconcile(false).await,
             () = containers.changed.notified() => {
@@ -240,6 +250,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     stop.cancel();
     // Give the router a moment to drop its forwards.
     let _ = tokio::time::timeout(Duration::from_secs(10), upnp_task).await;
+    daemon.vpn.stop().await;
     daemon.health.stop();
     info!(
         "stopping; open connections get {:?} to finish",
@@ -251,6 +262,9 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
 
 struct Daemon {
     firewall: FirewallCtl,
+    vpn: crate::vpn::VpnCtl,
+    /// The dashboard's listeners, which follow the VPN address.
+    access: Option<Arc<hearthgate_api::AccessControl>>,
     /// Firewall settings for the blocklist and ban tasks.
     firewall_settings: watch::Sender<hearthgate_model::Firewall>,
     /// Ports the router should forward.
@@ -313,9 +327,14 @@ impl Daemon {
         self.cert_specs.clone_from(&plan.certs);
         self.load_certificates();
         let errors = self.gateway.apply(&plan).await;
+        self.firewall.vpn = self.vpn.reconcile(&state, &self.containers).await;
         self.firewall
             .reconcile(&state, id, self.applied.is_none())
             .await;
+        if let Some(access) = &self.access {
+            // The dashboard is reachable over the VPN too, at its address.
+            access.refresh(&self.store).await;
+        }
         let wanted = upnp_wanted(&state);
         self.upnp.send_if_modified(|w| {
             let changed = *w != wanted;
@@ -366,6 +385,7 @@ impl Daemon {
     fn publish_runtime(&self) {
         let mut problems = self.bind_errors.clone();
         problems.extend(self.firewall.problem.iter().cloned());
+        problems.extend(self.vpn.problems());
         problems.extend(self.cert_notes.iter().cloned());
         problems.extend(
             self.acme_problems
@@ -411,6 +431,9 @@ fn upnp_wanted(state: &DesiredState) -> hearthgate_upnp::Wanted {
         if listener.udp() {
             ports.push((listener.port, Protocol::Udp));
         }
+    }
+    if state.vpn.enabled {
+        ports.push((state.vpn.port, Protocol::Udp));
     }
     ports.sort_unstable();
     ports.dedup();
@@ -477,6 +500,7 @@ async fn start_admin(
     live: &Arc<hearthgate_api::Live>,
     perimeter: &Arc<hearthgate_firewall::Perimeter>,
     router: &Arc<hearthgate_upnp::Router>,
+    vpn: &Arc<hearthgate_vpn::Runtime>,
     stop: &CancellationToken,
 ) -> Result<Arc<hearthgate_api::AccessControl>> {
     use hearthgate_api::access::{Resolved, Source, TlsMode};
@@ -531,6 +555,7 @@ async fn start_admin(
         live: Arc::clone(live),
         perimeter: Arc::clone(perimeter),
         router: Arc::clone(router),
+        vpn: Arc::clone(vpn),
     };
     let wanted = {
         let store = Arc::clone(store);

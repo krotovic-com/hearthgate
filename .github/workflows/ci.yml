@@ -42,13 +42,15 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
-      # The firewall tests build network namespaces and load real nftables
-      # rulesets, so they skip without root. Run them again as root (only
-      # the test binary, so the build output stays owned by the runner).
-      - name: Firewall tests in network namespaces
+      # The firewall and VPN tests build network namespaces, load real
+      # nftables rulesets and start real WireGuard tunnels, so they skip
+      # without root. Run them again as root (only the test binaries, so the
+      # build output stays owned by the runner).
+      - name: Firewall and VPN tests in network namespaces
         run: |
-          sudo apt-get install -y --no-install-recommends nftables iproute2
+          sudo apt-get install -y --no-install-recommends nftables iproute2 wireguard-tools
           cargo test --locked -p hearthgate-firewall --test netns
+          cargo test --locked -p hearthgate --test vpn_netns
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
           HEARTHGATE_NETNS_TESTS: '1'

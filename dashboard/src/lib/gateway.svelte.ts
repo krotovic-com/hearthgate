@@ -12,6 +12,7 @@ import {
   type FirewallSettings,
 } from './api';
 import { canonical, compact, withDefaults } from './firewall';
+import { compactDns, compactVpn, dnsWithDefaults, vpnWithDefaults, type FullDns, type FullVpn } from './vpn';
 
 export interface Gateway {
   loaded: boolean;
@@ -59,6 +60,12 @@ export const draft = {
   get upnp(): boolean {
     return gw.draft.router?.upnp ?? false;
   },
+  get vpn(): FullVpn {
+    return vpnWithDefaults(gw.draft.vpn);
+  },
+  get dns(): FullDns {
+    return dnsWithDefaults(gw.draft.dns);
+  },
 };
 
 export function isDirty(): boolean {
@@ -99,6 +106,12 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   if (fw) next.firewall = fw;
   else delete next.firewall;
   if (!next.router?.upnp) delete next.router;
+  const vpn = compactVpn(vpnWithDefaults(next.vpn));
+  if (vpn) next.vpn = vpn;
+  else delete next.vpn;
+  const dns = compactDns(dnsWithDefaults(next.dns));
+  if (dns) next.dns = dns;
+  else delete next.dns;
   for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
 }
@@ -109,6 +122,17 @@ export function editFirewall(change: (fw: Required<FirewallSettings>) => void): 
     const fw = withDefaults(s.firewall);
     change(fw);
     s.firewall = fw;
+  });
+}
+
+/** Changes the draft's VPN and DNS settings. */
+export function editVpn(change: (vpn: FullVpn, dns: FullDns) => void): void {
+  edit((s) => {
+    const vpn = vpnWithDefaults(s.vpn);
+    const dns = dnsWithDefaults(s.dns);
+    change(vpn, dns);
+    s.vpn = vpn;
+    s.dns = dns;
   });
 }
 
@@ -166,6 +190,23 @@ export function draftSummary(): string[] {
   if ((cur.router?.upnp ?? false) !== (next.router?.upnp ?? false)) {
     out.push(next.router?.upnp ? 'Turn on router port forwarding' : 'Turn off router port forwarding');
   }
+  out.push(...vpnSummary(vpnWithDefaults(cur.vpn), vpnWithDefaults(next.vpn)));
+  if (canonical(dnsWithDefaults(cur.dns)) !== canonical(dnsWithDefaults(next.dns))) out.push('Change internal DNS');
+  return out;
+}
+
+function vpnSummary(cur: FullVpn, next: FullVpn): string[] {
+  const out: string[] = [];
+  if (cur.enabled !== next.enabled) out.push(next.enabled ? 'Turn on the VPN' : 'Turn off the VPN');
+  const before = new Map(cur.peers.map((p) => [p.name, canonical(p)]));
+  const after = new Map(next.peers.map((p) => [p.name, canonical(p)]));
+  for (const [name, json] of after) {
+    if (!before.has(name)) out.push(`Add VPN device ${name}`);
+    else if (before.get(name) !== json) out.push(`Change VPN device ${name}`);
+  }
+  for (const name of before.keys()) if (!after.has(name)) out.push(`Remove VPN device ${name}`);
+  const general = (v: FullVpn) => canonical([v.port, v.subnet, v.endpoint ?? null]);
+  if (general(cur) !== general(next)) out.push('Change VPN settings');
   return out;
 }
 

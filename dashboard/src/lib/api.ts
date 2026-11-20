@@ -167,7 +167,68 @@ export interface RouterSettings {
   upnp: boolean;
 }
 
+/** `'all'`, or the names of the services a peer may reach. */
+export type Access = 'all' | string[];
+
+export interface Peer {
+  name: string;
+  public_key: string;
+  address: string;
+  access?: Access;
+}
+
+export interface VpnSettings {
+  enabled?: boolean;
+  port?: number;
+  subnet?: string;
+  endpoint?: string;
+  peers?: Peer[];
+}
+
+export interface DnsSettings {
+  enabled?: boolean;
+  zone?: string;
+  lan?: boolean;
+  upstream?: string[];
+}
+
+export interface VpnPeerInfo {
+  name: string;
+  address: string;
+  public_key: string;
+  endpoint: string | null;
+  latest_handshake: number | null;
+  online: boolean;
+  rx_bytes: number;
+  tx_bytes: number;
+}
+
+export interface VpnInfo {
+  enabled: boolean;
+  running: boolean;
+  backend: 'kernel' | 'userspace' | null;
+  interface: string;
+  public_key: string | null;
+  endpoint: string | null;
+  address: string;
+  subnet: string;
+  port: number;
+  problems: string[];
+  peers: VpnPeerInfo[];
+  dns: string[];
+  names: { name: string; addresses: string[] }[];
+}
+
+export interface PeerConfigResponse {
+  public_key: string;
+  address: string;
+  config: string;
+  qr_svg: string;
+}
+
 export interface DesiredState {
+  vpn?: VpnSettings;
+  dns?: DnsSettings;
   interfaces?: Interface[];
   services?: Service[];
   routes?: Route[];
@@ -391,4 +452,7 @@ export const api = {
     request<void>('POST', '/api/v1/firewall/bans', { address, duration: duration || null }),
   unban: (address: string) => request<void>('DELETE', `/api/v1/firewall/bans/${encodeURIComponent(address)}`),
   router: () => request<RouterInfo>('GET', '/api/v1/router'),
+  vpn: () => request<VpnInfo>('GET', '/api/v1/vpn'),
+  peerConfig: (body: { name: string; access: Access; state: DesiredState }) =>
+    request<PeerConfigResponse>('POST', '/api/v1/vpn/peer-config', body),
 };

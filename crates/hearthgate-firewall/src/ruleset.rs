@@ -13,13 +13,18 @@
 //!
 //! A `forward` chain keeps ports that Docker publishes on the host reachable
 //! from the LAN only, unless the user allows them.
+//!
+//! With the VPN on, both chains also limit each peer to what it may reach,
+//! and a `postrouting` chain masquerades peers' traffic to the LAN. That
+//! part is installed even when the firewall itself is off, since per-peer
+//! access depends on it.
 
 use std::fmt::Write as _;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
 use hearthgate_model::{Firewall, PortRange, Protocol, RuleAction, SPECIAL_NETS};
-use ipnet::IpNet;
+use ipnet::{IpNet, Ipv4Net};
 
 /// Name of the nftables table Hearthgate owns. Nothing else is touched.
 pub const TABLE: &str = "hearthgate";
@@ -45,8 +50,34 @@ pub struct Inputs {
     pub admin: Option<(Vec<u16>, Vec<IpNet>)>,
     /// Networks this host is attached to.
     pub lan: Vec<IpNet>,
-    /// Network interfaces whose traffic is trusted like the LAN (the VPN).
+    /// Network interfaces whose traffic is trusted like the LAN.
     pub trusted_interfaces: Vec<String>,
+    /// The VPN, when it is on.
+    pub vpn: Option<VpnPolicy>,
+}
+
+impl Inputs {
+    /// Whether anything needs the table.
+    #[must_use]
+    pub fn needs_table(&self) -> bool {
+        self.firewall.enabled || self.vpn.is_some()
+    }
+}
+
+/// What each VPN peer may reach.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VpnPolicy {
+    /// The WireGuard interface.
+    pub interface: String,
+    pub subnet: Ipv4Net,
+    /// This machine's VPN address, where DNS answers.
+    pub server: Ipv4Addr,
+    pub dns: bool,
+    /// Peers that reach everything.
+    pub full: Vec<Ipv4Addr>,
+    /// `(peer, destination, port)` for peers limited to some services, over
+    /// TCP and UDP.
+    pub allowed: Vec<(Ipv4Addr, Ipv4Addr, u16)>,
 }
 
 /// Addresses loaded from feeds and bans. Kept apart from [`Inputs`] because
@@ -122,12 +153,14 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
     block.extend(dynamic.feeds.iter().copied());
     let block = IpNet::aggregate(&block);
 
-    interval_set(&mut out, "special", &special);
-    interval_set(&mut out, "allow", &fw.allow);
-    interval_set(&mut out, "block", &block);
-    interval_set(&mut out, "lan", &lan);
-    interval_set(&mut out, "admin", &admin_nets);
-    ban_sets(&mut out, &dynamic.bans);
+    if fw.enabled {
+        interval_set(&mut out, "special", &special);
+        interval_set(&mut out, "allow", &fw.allow);
+        interval_set(&mut out, "block", &block);
+        interval_set(&mut out, "lan", &lan);
+        interval_set(&mut out, "admin", &admin_nets);
+        ban_sets(&mut out, &dynamic.bans);
+    }
     for reason in Reason::ALL {
         for (family, ty) in [("4", "ipv4_addr"), ("6", "ipv6_addr")] {
             let _ = writeln!(
@@ -139,6 +172,9 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
             );
         }
     }
+    if let Some(vpn) = &inputs.vpn {
+        vpn_sets(&mut out, vpn);
+    }
     let limited: Vec<(u32, Vec<&OpenPort>)> = rate_groups(&inputs.open);
     for (i, _) in limited.iter().enumerate() {
         for (family, ty) in [("4", "ipv4_addr"), ("6", "ipv6_addr")] {
@@ -147,6 +183,12 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
                 "  set rate{i}_{family} {{ type {ty}; flags dynamic,timeout; timeout 1m; size 65536; }}"
             );
         }
+    }
+
+    if !fw.enabled {
+        // The VPN alone: nothing else is filtered.
+        vpn_only(&mut out, inputs);
+        return out;
     }
 
     // prerouting: lists and bans.
@@ -189,6 +231,9 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
     if fw.allow_ping {
         out.push_str("    icmp type echo-request limit rate 20/second accept\n");
         out.push_str("    icmpv6 type echo-request limit rate 20/second accept\n");
+    }
+    if let Some(vpn) = &inputs.vpn {
+        vpn_input(&mut out, vpn, &inputs.open);
     }
     for rule in &fw.rules {
         let _ = writeln!(out, "    # rule {}", rule.name);
@@ -263,6 +308,9 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
     out.push_str(
         "  chain forward {\n    type filter hook forward priority filter; policy accept;\n",
     );
+    if let Some(vpn) = &inputs.vpn {
+        vpn_forward(&mut out, vpn);
+    }
     if !fw.allow_docker_ports {
         for iface in &inputs.trusted_interfaces {
             let _ = writeln!(out, "    iifname {} accept", quote(iface));
@@ -276,8 +324,117 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
         }
     }
     out.push_str("  }\n");
+    if let Some(vpn) = &inputs.vpn {
+        vpn_nat(&mut out, vpn);
+    }
     out.push_str("}\n");
     out
+}
+
+fn vpn_sets(out: &mut String, vpn: &VpnPolicy) {
+    let full: Vec<String> = vpn.full.iter().map(ToString::to_string).collect();
+    let _ = write!(out, "  set vpn_full {{ type ipv4_addr;");
+    if !full.is_empty() {
+        let _ = write!(out, " elements = {{ {} }}", full.join(", "));
+    }
+    out.push_str(" }\n");
+    let mut allowed: Vec<String> = Vec::new();
+    for (peer, dst, port) in &vpn.allowed {
+        for proto in ["tcp", "udp"] {
+            allowed.push(format!("{peer} . {dst} . {proto} . {port}"));
+        }
+    }
+    allowed.sort();
+    allowed.dedup();
+    let _ = write!(
+        out,
+        "  set vpn_allowed {{ type ipv4_addr . ipv4_addr . inet_proto . inet_service;"
+    );
+    if !allowed.is_empty() {
+        let _ = write!(out, " elements = {{ {} }}", allowed.join(", "));
+    }
+    out.push_str(" }\n");
+}
+
+/// Input rules for traffic from peers: DNS, what each peer may reach, and
+/// the public ports (open to everyone anyway); everything else is dropped.
+fn vpn_input(out: &mut String, vpn: &VpnPolicy, open: &[OpenPort]) {
+    let iface = quote(&vpn.interface);
+    let _ = writeln!(out, "    # VPN peers");
+    if vpn.dns {
+        let _ = writeln!(
+            out,
+            "    iifname {iface} ip daddr {} meta l4proto {{ tcp, udp }} th dport 53 accept",
+            vpn.server
+        );
+    }
+    let _ = writeln!(out, "    iifname {iface} icmp type echo-request accept");
+    let _ = writeln!(out, "    iifname {iface} ip saddr @vpn_full accept");
+    let _ = writeln!(
+        out,
+        "    iifname {iface} ip saddr . ip daddr . meta l4proto . th dport @vpn_allowed accept"
+    );
+    let all: Vec<&OpenPort> = open.iter().collect();
+    for (proto, dports) in proto_ports(&all) {
+        let _ = writeln!(out, "    iifname {iface} {proto} dport {dports} accept");
+    }
+    for family in Family::BOTH {
+        drop_rule(
+            out,
+            &format!("iifname {iface} {}", family.nfproto()),
+            family,
+            Reason::Policy,
+        );
+    }
+}
+
+fn vpn_forward(out: &mut String, vpn: &VpnPolicy) {
+    let iface = quote(&vpn.interface);
+    let _ = writeln!(out, "    iifname {iface} ip saddr @vpn_full accept");
+    let _ = writeln!(
+        out,
+        "    iifname {iface} ip saddr . ip daddr . meta l4proto . th dport @vpn_allowed accept"
+    );
+    for family in Family::BOTH {
+        drop_rule(
+            out,
+            &format!("iifname {iface} {}", family.nfproto()),
+            family,
+            Reason::Policy,
+        );
+    }
+}
+
+/// Peers' traffic leaves with this machine's address, so the LAN and the
+/// internet answer without routes back to the VPN.
+fn vpn_nat(out: &mut String, vpn: &VpnPolicy) {
+    let _ = writeln!(
+        out,
+        "  chain postrouting {{\n    type nat hook postrouting priority srcnat; policy accept;\n    \
+         ip saddr {} oifname != {} masquerade\n  }}",
+        vpn.subnet,
+        quote(&vpn.interface)
+    );
+}
+
+/// The table with only the VPN's rules, for when the firewall is off.
+fn vpn_only(out: &mut String, inputs: &Inputs) {
+    let Some(vpn) = &inputs.vpn else {
+        out.push_str("}\n");
+        return;
+    };
+    out.push_str("  chain input {\n    type filter hook input priority filter; policy accept;\n");
+    out.push_str("    ct state established,related accept\n");
+    vpn_input(out, vpn, &inputs.open);
+    out.push_str("  }\n");
+    out.push_str(
+        "  chain forward {\n    type filter hook forward priority filter; policy accept;\n",
+    );
+    out.push_str("    ct state established,related accept\n");
+    vpn_forward(out, vpn);
+    out.push_str("  }\n");
+    vpn_nat(out, vpn);
+    out.push_str("}\n");
 }
 
 /// Script that removes the table (when the firewall is turned off).

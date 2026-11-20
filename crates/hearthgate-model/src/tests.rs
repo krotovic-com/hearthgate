@@ -307,3 +307,65 @@ fn acme_directory_defaults() {
 fn print_export() {
     println!("{}", DesiredState::from_toml(EXAMPLE).unwrap().to_toml());
 }
+
+#[test]
+fn vpn_is_checked() {
+    const KEY: &str = "Y2FD6uTgrq+/bbBAXCNOtE+PGk8Papoh7qaWBpQUXn0=";
+    let peer = |name: &str, key: &str, address: &str, access: &str| {
+        format!(
+            "[[vpn.peers]]\nname = \"{name}\"\npublic_key = \"{key}\"\naddress = \"{address}\"\naccess = {access}\n"
+        )
+    };
+    let base = "[vpn]\nenabled = true\n";
+    let ok = format!(
+        "[[services]]\nname = \"nas\"\nkind = \"external\"\nhost = \"192.168.1.2\"\nports = {{ web = 80 }}\n\n{base}{}{}",
+        peer("phone", KEY, "10.88.0.2", "\"all\""),
+        peer(
+            "guest",
+            "YAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=",
+            "10.88.0.3",
+            "[\"nas\"]"
+        )
+    );
+    assert!(messages(&ok).is_empty(), "{:?}", messages(&ok));
+    let state = DesiredState::from_toml(&ok).unwrap();
+    assert_eq!(state.vpn.free_address(), Some("10.88.0.4".parse().unwrap()));
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+
+    assert_problem(
+        &format!("{base}{}", peer("Phone", KEY, "10.88.0.2", "\"all\"")),
+        "invalid name",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", "short", "10.88.0.2", "\"all\"")),
+        "not a WireGuard key",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.88.0.1", "\"all\"")),
+        "belongs to this machine",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.99.0.2", "\"all\"")),
+        "not a host address",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.88.0.2", "[\"nope\"]")),
+        "no service is called `nope`",
+    );
+    assert_problem(
+        &format!(
+            "{base}{}{}",
+            peer("a", KEY, "10.88.0.2", "\"all\""),
+            peer("b", KEY, "10.88.0.2", "\"all\"")
+        ),
+        "same public key",
+    );
+    assert_problem("[vpn]\nsubnet = \"8.8.0.0/24\"\n", "private network");
+    assert_problem("[vpn]\nsubnet = \"10.0.0.0/8\"\n", "/16 to /30");
+    assert_problem("[vpn]\nendpoint = \"bad host!\"\n", "vpn.endpoint");
+    assert_problem("[dns]\nupstream = [\"dns.google\"]\n", "dns.upstream");
+    assert_problem(
+        "[[interfaces]]\nname = \"q\"\nlisteners = [{ port = 51820, mode = \"raw\", protocol = \"udp\" }]\n[vpn]\nenabled = true\n",
+        "used by a public interface",
+    );
+}

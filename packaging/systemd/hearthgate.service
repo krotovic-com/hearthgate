@@ -32,14 +32,21 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-PrivateDevices=true
+# No devices except /dev/net/tun, for the userspace WireGuard (wireguard-go)
+# on kernels without the WireGuard module.
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
 StateDirectory=hearthgate
 StateDirectoryMode=0700
 ConfigurationDirectory=hearthgate
 LogsDirectory=hearthgate
+# /run/wireguard holds wireguard-go's control sockets.
+RuntimeDirectory=hearthgate wireguard
 UMask=0077
 
-# Kernel and process hardening.
+# Kernel and process hardening. /proc/sys is read-only, so the VPN can't
+# turn on IPv4 forwarding by itself: packaging/sysctl/60-hearthgate.conf
+# does that at boot.
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true

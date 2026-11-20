@@ -39,8 +39,7 @@ crates/
   hearthgate-ui        # embedded dashboard assets (Phase 2)
   hearthgate-firewall  # nftables and blocklists (Phase 3)
   hearthgate-upnp      # router port mapping (Phase 3)
-  hearthgate-vpn       # WireGuard (Phase 4)
-  hearthgate-dns       # internal DNS (Phase 4)
+  hearthgate-vpn       # WireGuard and internal DNS (Phase 4)
   hearthgate-docker    # managed containers and stacks (Phase 5)
   hearthgate-ai        # provider adapters and review engine (Phase 7)
 hearthgate/            # the binary: CLI, wiring, supervisor
@@ -179,10 +178,10 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 ### Scope
 
-- **WireGuard** using the kernel module, managed over netlink (`defguard_wireguard_rs` or `wireguard-control`), with a userspace fallback (`boringtun`) for kernels without it. Its UDP port is opened in the firewall and through UPnP automatically.
+- **WireGuard** using the kernel module, managed with the standard `ip` and `wg` tools, with `wireguard-go` as the userspace fallback for kernels without it. Its UDP port is opened in the firewall and through UPnP automatically.
 - **Peers**: create from the dashboard, show a QR code and config file, revoke, last handshake and traffic per peer. Keys are generated on the server or supplied by the user.
 - Access policy per peer: full access to all services, or a selected list (enforced by the Phase 3 firewall).
-- **Internal DNS** with `hickory-server`, listening only on the VPN interface (and optionally the LAN): every service resolves as `name.home.internal`, the zone is configurable, other names forward to an upstream resolver.
+- **Internal DNS**: a small built-in server (messages parsed with `hickory-proto`), listening only on the VPN interface (and optionally the LAN): every service resolves as `name.home.internal`, the zone is configurable, other names forward to an upstream resolver.
 - Admin dashboard reachable over the VPN as well as the LAN.
 - Dashboard: **VPN peers** screen, DNS settings.
 

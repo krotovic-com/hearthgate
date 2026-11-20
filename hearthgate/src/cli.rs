@@ -41,6 +41,41 @@ pub enum FirewallCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum VpnCommand {
+    /// Show the VPN's settings and its peers.
+    Status,
+    /// Turn the VPN on.
+    Enable {
+        /// Host name or address peers connect to, such as
+        /// `vpn.example.com` (default: the first public domain, or the
+        /// router's public address).
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Turn the VPN off. Peers are kept.
+    Disable,
+    /// Add a device and print its configuration (and a QR code for phone
+    /// apps). Its private key is shown only this once.
+    Add {
+        name: String,
+        /// `all`, or the services it may reach, separated by commas.
+        #[arg(long, default_value = "all")]
+        access: String,
+        /// Its VPN address (default: the next free one).
+        #[arg(long)]
+        address: Option<std::net::Ipv4Addr>,
+        /// Write the configuration to this file instead of printing it.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Don't print a QR code.
+        #[arg(long)]
+        no_qr: bool,
+    },
+    /// Remove a device. It can't connect any more.
+    Remove { name: String },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the gateway (what the systemd service starts).
     Run,
@@ -105,6 +140,11 @@ pub enum Command {
     Firewall {
         #[command(subcommand)]
         action: FirewallCommand,
+    },
+    /// VPN: show it, turn it on or off, add or remove devices.
+    Vpn {
+        #[command(subcommand)]
+        action: VpnCommand,
     },
     /// Print the admin API's OpenAPI document.
     Openapi,
@@ -192,6 +232,7 @@ impl Cli {
             }
             Command::AdminAccess { reset } => admin_access(&bootstrap, reset),
             Command::Firewall { action } => firewall(&bootstrap, &action),
+            Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -308,7 +349,7 @@ fn admin_access(bootstrap: &Bootstrap, reset: bool) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn open_store(bootstrap: &Bootstrap) -> Result<Store> {
+pub(crate) fn open_store(bootstrap: &Bootstrap) -> Result<Store> {
     Store::open_dir(&bootstrap.data_dir).with_context(|| {
         format!(
             "cannot open the state database in {} (run as root or the hearthgate user, or pass \
@@ -332,7 +373,7 @@ fn read_state_file(file: &Path) -> Result<DesiredState> {
 }
 
 /// Who made a change, for the revision history.
-fn author() -> String {
+pub(crate) fn author() -> String {
     let user = std::env::var("SUDO_USER")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "unknown".to_owned());

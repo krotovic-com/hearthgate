@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hearthgate_api::AccessControl;
-use hearthgate_firewall::{Inputs, OpenPort, Pending, Perimeter};
+use hearthgate_firewall::{Inputs, OpenPort, Pending, Perimeter, VpnPolicy};
 use hearthgate_model::{DesiredState, Firewall};
 use hearthgate_store::Store;
 use tracing::{error, info, warn};
@@ -39,6 +39,8 @@ pub struct FirewallCtl {
     checked_at: Instant,
     /// Why the firewall could not be installed, for the status page.
     pub problem: Option<String>,
+    /// What VPN peers may reach, set by the VPN before each reconcile.
+    pub vpn: Option<VpnPolicy>,
 }
 
 impl FirewallCtl {
@@ -56,6 +58,7 @@ impl FirewallCtl {
             state: DesiredState::default(),
             checked_at: Instant::now(),
             problem: None,
+            vpn: None,
         }
     }
 
@@ -255,9 +258,27 @@ impl FirewallCtl {
             ports.dedup();
             (ports, current.allow)
         });
+        if self.vpn.is_some() {
+            // Peers connect from anywhere.
+            let entry = open.entry(state.vpn.port).or_insert(OpenPort {
+                port: state.vpn.port,
+                tcp: false,
+                udp: false,
+                rate_limit: None,
+            });
+            entry.udp = true;
+            entry.rate_limit = None;
+        }
+        // The VPN's own network is not LAN: peers get what their access
+        // allows, not everything.
+        let subnet = state.vpn.subnet;
         let lan = hearthgate_api::access::detect_lan()
             .into_iter()
             .map(|(_, net)| net)
+            .filter(|net| match net {
+                ipnet::IpNet::V4(v4) => !subnet.contains(v4) && !v4.contains(&subnet.network()),
+                ipnet::IpNet::V6(_) => true,
+            })
             .collect();
         Inputs {
             firewall: state.firewall.clone(),
@@ -265,6 +286,7 @@ impl FirewallCtl {
             admin,
             lan,
             trusted_interfaces: Vec::new(),
+            vpn: self.vpn.clone(),
         }
     }
 }

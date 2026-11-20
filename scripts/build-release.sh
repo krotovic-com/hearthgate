@@ -41,7 +41,7 @@ for target in "${targets[@]}"; do
   mkdir -p "$stage"
   cp "target/$target/release/hearthgate" "$stage/"
   cp LICENSE README.md "$stage/"
-  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers "$stage/"
+  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers packaging/sysctl/60-hearthgate.conf "$stage/"
   mkdir -p "$stage/examples"
   cp packaging/hearthgate.toml packaging/examples/state.toml "$stage/examples/"
   tar -C dist -czf "dist/$name.tar.gz" "$name"

@@ -37,7 +37,8 @@ use crate::auth::Principal;
         crate::account::totp_enable, crate::account::totp_disable, crate::account::list_tokens,
         crate::account::create_token, crate::account::delete_token,
         crate::firewall::info, crate::firewall::recent, crate::firewall::confirm,
-        crate::firewall::ban, crate::firewall::unban, crate::firewall::router
+        crate::firewall::ban, crate::firewall::unban, crate::firewall::router,
+        crate::vpn::info, crate::vpn::peer_config
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -53,14 +54,17 @@ use crate::auth::Principal;
         crate::firewall::FirewallInfo, crate::firewall::PendingInfo,
         crate::firewall::DroppedInfo, crate::firewall::FeedInfo, crate::firewall::BanInfo,
         crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
-        crate::firewall::RouterInfo, crate::firewall::MappingInfo
+        crate::firewall::RouterInfo, crate::firewall::MappingInfo,
+        crate::vpn::VpnInfo, crate::vpn::VpnPeerInfo, crate::vpn::DnsName, crate::vpn::PeerConfigRequest,
+        crate::vpn::PeerConfigResponse
     )),
     modifiers(&Security),
     tags(
         (name = "hearthgate"),
         (name = "auth", description = "Dashboard login and API tokens"),
         (name = "settings", description = "Settings kept outside the desired state"),
-        (name = "firewall", description = "Firewall status, bans and change confirmation")
+        (name = "firewall", description = "Firewall status, bans and change confirmation"),
+        (name = "vpn", description = "VPN status and new peer configurations")
     )
 )]
 pub struct ApiDoc;
@@ -115,6 +119,8 @@ pub fn router(state: ApiState) -> Router {
             "/api/v1/settings/admin-access",
             get(crate::access::get_access).put(crate::access::put_access),
         )
+        .route("/api/v1/vpn", get(crate::vpn::info))
+        .route("/api/v1/vpn/peer-config", post(crate::vpn::peer_config))
         .route("/api/v1/firewall", get(crate::firewall::info))
         .route("/api/v1/router", get(crate::firewall::router))
         .route("/api/v1/firewall/recent", get(crate::firewall::recent))

@@ -16,6 +16,7 @@ mod routes;
 mod secret;
 pub mod tls;
 mod ui;
+pub mod vpn;
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, PoisonError, RwLock};
@@ -86,6 +87,7 @@ pub struct ApiState {
     pub perimeter: Arc<hearthgate_firewall::Perimeter>,
     /// Router port forwarding state.
     pub router: Arc<hearthgate_upnp::Router>,
+    pub vpn: Arc<hearthgate_vpn::Runtime>,
 }
 
 impl ApiState {

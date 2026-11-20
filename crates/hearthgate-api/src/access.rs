@@ -318,6 +318,30 @@ impl AccessControl {
         }
     }
 
+    /// Follows address changes (such as the VPN interface coming up) in LAN
+    /// mode. Settings pinned in the bootstrap file stay as they are.
+    pub async fn refresh(&self, store: &Arc<Store>) {
+        if self.locked() || self.app.get().is_none() {
+            return;
+        }
+        let wanted = {
+            let store = Arc::clone(store);
+            let source = self.source.clone();
+            tokio::task::spawn_blocking(move || match source {
+                Source::Config(r) => r,
+                Source::Dashboard => resolve(&Self::stored(&store), &detect_lan()),
+            })
+            .await
+        };
+        let Ok(wanted) = wanted else { return };
+        if wanted != self.current() {
+            info!("network addresses changed; updating the dashboard's listeners");
+            if let Err(e) = self.apply(wanted, false).await {
+                warn!("admin API: {e}");
+            }
+        }
+    }
+
     /// Starts the listeners. Addresses that cannot be bound are logged and
     /// skipped, so one missing address does not keep the dashboard down.
     pub async fn start(&self, app: Router, wanted: Resolved) {
