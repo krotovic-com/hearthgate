@@ -174,10 +174,11 @@ pub fn client_routes(
     let reachable: Vec<IpAddr> = match access {
         Access::All => {
             for net in lan {
-                if let IpNet::V4(v4) = net {
-                    if v4.network().is_private() && !subnet.contains(v4) {
-                        out.push(IpNet::V4(v4.trunc()));
-                    }
+                if let IpNet::V4(v4) = net
+                    && v4.network().is_private()
+                    && !subnet.contains(v4)
+                {
+                    out.push(IpNet::V4(v4.trunc()));
                 }
             }
             services.values().flatten().copied().collect()
@@ -190,10 +191,10 @@ pub fn client_routes(
             .collect(),
     };
     for ip in reachable {
-        if let IpAddr::V4(v4) = ip {
-            if !out.iter().any(|n| n.contains(&ip)) {
-                out.push(IpNet::V4(Ipv4Net::from(v4)));
-            }
+        if let IpAddr::V4(v4) = ip
+            && !out.iter().any(|n| n.contains(&ip))
+        {
+            out.push(IpNet::V4(Ipv4Net::from(v4)));
         }
     }
     out

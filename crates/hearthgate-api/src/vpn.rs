@@ -200,16 +200,15 @@ pub(crate) async fn peer_config(
             "use lowercase letters, digits and dashes for the name",
         ));
     }
-    if let Access::Services(list) = &request.access {
-        if let Some(missing) = list
+    if let Access::Services(list) = &request.access
+        && let Some(missing) = list
             .iter()
             .find(|n| !desired.services.iter().any(|s| &s.name == *n))
-        {
-            return Err(ApiError::new(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!("no service is called `{missing}`"),
-            ));
-        }
+    {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("no service is called `{missing}`"),
+        ));
     }
     let vpn = &desired.vpn;
     let address = match request.address {

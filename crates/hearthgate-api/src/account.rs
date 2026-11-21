@@ -131,14 +131,14 @@ pub async fn session_info(
         let mut csrf = None;
         if let Some(token) = token {
             let hash = secret::sha256_hex(&token);
-            if let Some(session) = store.session(&hash, secret::now())? {
-                if let Some(u) = store.user(session.user_id)? {
-                    user = Some(UserInfo {
-                        username: u.username,
-                        totp_enabled: u.totp_secret.is_some(),
-                    });
-                    csrf = Some(session.csrf);
-                }
+            if let Some(session) = store.session(&hash, secret::now())?
+                && let Some(u) = store.user(session.user_id)?
+            {
+                user = Some(UserInfo {
+                    username: u.username,
+                    totp_enabled: u.totp_secret.is_some(),
+                });
+                csrf = Some(session.csrf);
             }
         }
         Ok(SessionInfo {

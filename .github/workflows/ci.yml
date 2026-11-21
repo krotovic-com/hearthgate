@@ -58,6 +58,19 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
           HEARTHGATE_NETNS_TESTS: '1'
 
+  deny:
+    name: dependencies (advisories, licenses, sources)
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - name: npm audit (dashboard)
+        working-directory: dashboard
+        run: npm audit --omit=dev --audit-level=high
+
   dashboard:
     name: dashboard (svelte-check, unit, end-to-end)
     if: github.event.action != 'edited'

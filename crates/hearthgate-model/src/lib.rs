@@ -10,6 +10,7 @@
 //! validated [`DesiredState`] into their own runtime structures.
 
 mod docker;
+pub mod duration;
 mod firewall;
 mod hostname;
 mod types;

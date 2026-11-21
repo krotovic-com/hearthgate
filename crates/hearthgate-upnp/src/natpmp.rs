@@ -52,24 +52,26 @@ impl NatPmp {
         let mut buf = [0u8; 64];
         for _ in 0..3 {
             socket.send(msg).await?;
-            if let Ok(Ok(n)) = tokio::time::timeout(wait, socket.recv(&mut buf)).await {
-                if n >= 8 && buf[0] == 0 && buf[1] == expect_op {
-                    let code = u16::from_be_bytes([buf[2], buf[3]]);
-                    if code != 0 {
-                        return Err(Error::Router(format!(
-                            "NAT-PMP error {code} ({})",
-                            match code {
-                                1 => "unsupported version",
-                                2 => "not authorized",
-                                3 => "network failure",
-                                4 => "out of resources",
-                                5 => "unsupported opcode",
-                                _ => "unknown",
-                            }
-                        )));
-                    }
-                    return Ok(buf[..n].to_vec());
+            if let Ok(Ok(n)) = tokio::time::timeout(wait, socket.recv(&mut buf)).await
+                && n >= 8
+                && buf[0] == 0
+                && buf[1] == expect_op
+            {
+                let code = u16::from_be_bytes([buf[2], buf[3]]);
+                if code != 0 {
+                    return Err(Error::Router(format!(
+                        "NAT-PMP error {code} ({})",
+                        match code {
+                            1 => "unsupported version",
+                            2 => "not authorized",
+                            3 => "network failure",
+                            4 => "out of resources",
+                            5 => "unsupported opcode",
+                            _ => "unknown",
+                        }
+                    )));
                 }
+                return Ok(buf[..n].to_vec());
             }
             wait *= 2;
         }

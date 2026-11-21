@@ -126,7 +126,7 @@ container = "nextcloud"
 ports = { http = 80 }
 ```
 
-For `docker` services Hearthgate reads the container's address from Docker and follows restarts and network changes. To allow it, uncomment `SupplementaryGroups=docker` in the systemd unit. Access to the Docker socket is equivalent to root access on the host.
+For `docker` services Hearthgate reads the container's address from Docker and follows restarts and network changes. To allow it, and to run managed containers, uncomment `SupplementaryGroups=docker` in the systemd unit. Access to the Docker socket is equivalent to root access on the host.
 
 **Health checks** are optional. `type = "tcp"` connects, `type = "http"` sends a GET to `path` and expects a 2xx or 3xx status.
 

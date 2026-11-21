@@ -94,12 +94,12 @@ impl Nft {
         let mut child = cmd
             .spawn()
             .map_err(|source| NftError::Spawn { program, source })?;
-        if let Some(text) = stdin {
-            if let Some(mut pipe) = child.stdin.take() {
-                // A refused script makes nft exit early; its error message
-                // says why, so a broken pipe here is not the real problem.
-                let _ = pipe.write_all(text.as_bytes()).await;
-            }
+        if let Some(text) = stdin
+            && let Some(mut pipe) = child.stdin.take()
+        {
+            // A refused script makes nft exit early; its error message
+            // says why, so a broken pipe here is not the real problem.
+            let _ = pipe.write_all(text.as_bytes()).await;
         }
         let output = tokio::time::timeout(Duration::from_secs(60), child.wait_with_output())
             .await

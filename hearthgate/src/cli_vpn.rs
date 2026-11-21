@@ -182,11 +182,9 @@ pub(crate) fn run(bootstrap: &Bootstrap, action: VpnCommand) -> Result<ExitCode>
                 );
                 print!("{config}");
             }
-            if !no_qr {
-                if let Some(qr) = hearthgate_vpn::qr_terminal(&config) {
-                    eprintln!("\nOr scan this with the WireGuard app:\n");
-                    eprintln!("{qr}");
-                }
+            if !no_qr && let Some(qr) = hearthgate_vpn::qr_terminal(&config) {
+                eprintln!("\nOr scan this with the WireGuard app:\n");
+                eprintln!("{qr}");
             }
         }
         VpnCommand::Remove { name } => {

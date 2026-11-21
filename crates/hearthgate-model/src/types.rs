@@ -69,7 +69,7 @@ pub struct AcmeSettings {
     #[serde(default)]
     pub accept_terms: bool,
     /// Renew a certificate when it has less than this long left.
-    #[serde(default = "defaults::renew_before", with = "humantime_serde")]
+    #[serde(default = "defaults::renew_before", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub renew_before: Duration,
     /// Challenge type. By default `http-01` when the interface has an
@@ -133,28 +133,37 @@ pub struct Limits {
     #[serde(default = "defaults::max_body_bytes")]
     pub max_body_bytes: u64,
     /// Time allowed to receive request headers.
-    #[serde(default = "defaults::header_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::header_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub header_timeout: Duration,
     /// Time allowed for an upstream to answer an HTTP request.
-    #[serde(default = "defaults::upstream_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::upstream_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub upstream_timeout: Duration,
     /// Time allowed to connect to an upstream.
-    #[serde(default = "defaults::connect_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::connect_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub connect_timeout: Duration,
     /// Close idle TCP connections after this long.
-    #[serde(default = "defaults::tcp_idle_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::tcp_idle_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub tcp_idle_timeout: Duration,
     /// Forget UDP client sessions after this long without traffic.
-    #[serde(default = "defaults::udp_session_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::udp_session_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub udp_session_timeout: Duration,
     /// How long removed listeners keep serving open connections before they
     /// are closed.
-    #[serde(default = "defaults::drain_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::drain_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub drain_timeout: Duration,
 }
@@ -352,11 +361,11 @@ pub struct HealthCheck {
     #[serde(default = "defaults::health_path")]
     pub path: String,
     /// Time between checks.
-    #[serde(default = "defaults::health_interval", with = "humantime_serde")]
+    #[serde(default = "defaults::health_interval", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub interval: Duration,
     /// Time allowed for one check.
-    #[serde(default = "defaults::health_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::health_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub timeout: Duration,
     /// Consecutive successes before a target is healthy again.

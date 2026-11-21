@@ -211,7 +211,7 @@ pub struct Blocklist {
     /// Where to download it (`https://` only).
     pub url: String,
     /// How often to download it again.
-    #[serde(default = "refresh", with = "humantime_serde")]
+    #[serde(default = "refresh", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "12h"))]
     pub refresh: Duration,
     /// Turn the list off without forgetting it.
@@ -232,11 +232,11 @@ pub struct AutoBan {
     /// handshake counts 1, an unknown domain 2, an exploit probe 5.
     #[serde(default = "ban_threshold")]
     pub threshold: u32,
-    #[serde(default = "ban_window", with = "humantime_serde")]
+    #[serde(default = "ban_window", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10m"))]
     pub window: Duration,
     /// How long a ban lasts.
-    #[serde(default = "ban_time", with = "humantime_serde")]
+    #[serde(default = "ban_time", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "1h"))]
     pub ban_time: Duration,
 }

@@ -113,15 +113,16 @@ impl DesiredState {
                 c.push(format!("limits.{name}"), "must be greater than zero");
             }
         }
-        if let Some(email) = &self.acme.email {
-            if !email.contains('@') {
-                c.push("acme.email", "is not an email address");
-            }
+        if let Some(email) = &self.acme.email
+            && !email.contains('@')
+        {
+            c.push("acme.email", "is not an email address");
         }
-        if let Some(url) = &self.acme.directory {
-            if !url.starts_with("https://") && !url.starts_with("http://") {
-                c.push("acme.directory", "must be an http(s) URL");
-            }
+        if let Some(url) = &self.acme.directory
+            && !url.starts_with("https://")
+            && !url.starts_with("http://")
+        {
+            c.push("acme.directory", "must be an http(s) URL");
         }
         if self.acme.renew_before.is_zero() {
             c.push("acme.renew_before", "must be greater than zero");
@@ -498,16 +499,16 @@ impl DesiredState {
                     );
                 }
                 for domain in &interface.domains {
-                    if let Some(other) = owner.insert(domain, &interface.name) {
-                        if other != interface.name {
-                            c.push(
-                                &path,
-                                format!(
-                                    "domain {domain} is served by both {other} and {}",
-                                    interface.name
-                                ),
-                            );
-                        }
+                    if let Some(other) = owner.insert(domain, &interface.name)
+                        && other != interface.name
+                    {
+                        c.push(
+                            &path,
+                            format!(
+                                "domain {domain} is served by both {other} and {}",
+                                interface.name
+                            ),
+                        );
                     }
                 }
             }
@@ -667,13 +668,13 @@ fn validate_interface(interface: &Interface, c: &mut Collector) {
             );
         }
     }
-    if let Some(cert) = &interface.certificate {
-        if !is_valid_name(cert) {
-            c.push(
-                &path,
-                format!("invalid certificate name {cert}: {NAME_RULE}"),
-            );
-        }
+    if let Some(cert) = &interface.certificate
+        && !is_valid_name(cert)
+    {
+        c.push(
+            &path,
+            format!("invalid certificate name {cert}: {NAME_RULE}"),
+        );
     }
     if interface.listeners.is_empty() {
         c.push(&path, "needs at least one listener");
@@ -760,10 +761,11 @@ fn validate_service(service: &Service, c: &mut Collector) {
         if !health.path.starts_with('/') {
             c.push(&hpath, "path must start with /");
         }
-        if let Some(port) = &health.port {
-            if matches!(port, PortRef::Name(_)) && service.resolve_port(port).is_none() {
-                c.push(&hpath, format!("service has no port named {port}"));
-            }
+        if let Some(port) = &health.port
+            && matches!(port, PortRef::Name(_))
+            && service.resolve_port(port).is_none()
+        {
+            c.push(&hpath, format!("service has no port named {port}"));
         }
     }
 }

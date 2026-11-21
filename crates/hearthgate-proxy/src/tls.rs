@@ -97,7 +97,10 @@ impl<'a> Reader<'a> {
     }
 }
 
-fn parse_client_hello(body: &[u8]) -> Option<Hello> {
+/// Parses a ClientHello handshake body (after the 4-byte message header).
+/// Public for the fuzzers.
+#[must_use]
+pub fn parse_client_hello(body: &[u8]) -> Option<Hello> {
     let mut r = Reader(body);
     r.take(2 + 32)?; // legacy_version, random
     r.vec8()?; // session id
@@ -223,10 +226,10 @@ impl CertTable {
         if let Some(key) = self.exact.get(name) {
             return Some(Arc::clone(key));
         }
-        if let Some((_, parent)) = name.split_once('.') {
-            if let Some(key) = self.wildcard.get(parent) {
-                return Some(Arc::clone(key));
-            }
+        if let Some((_, parent)) = name.split_once('.')
+            && let Some(key) = self.wildcard.get(parent)
+        {
+            return Some(Arc::clone(key));
         }
         self.default.clone()
     }

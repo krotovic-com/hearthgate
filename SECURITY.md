@@ -10,4 +10,6 @@ Include the version (`hearthgate --version`), what you did, what happened and wh
 
 ## Supported versions
 
-Until 1.0, only the latest release gets security fixes.
+Security fixes go into the latest release. From 1.0, the latest minor release (1.x) gets them, as a patch release.
+
+What Hearthgate defends against, and what it leaves to you, is in the [threat model](docs/THREAT_MODEL.md).

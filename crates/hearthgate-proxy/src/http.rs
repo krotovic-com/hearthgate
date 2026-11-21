@@ -378,28 +378,27 @@ async fn handle(
     };
     let path = req.uri().path().to_owned();
 
-    if !info.tls {
-        if let Some(token) = path.strip_prefix(ACME_CHALLENGE_PREFIX) {
-            if let Some(answer) = ctx.challenges.get(token) {
-                let mut resp = Response::new(
-                    Full::new(Bytes::from(answer))
-                        .map_err(|n| match n {})
-                        .boxed(),
-                );
-                resp.headers_mut().insert(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static("application/octet-stream"),
-                );
-                return resp;
-            }
-        }
+    if !info.tls
+        && let Some(token) = path.strip_prefix(ACME_CHALLENGE_PREFIX)
+        && let Some(answer) = ctx.challenges.get(token)
+    {
+        let mut resp = Response::new(
+            Full::new(Bytes::from(answer))
+                .map_err(|n| match n {})
+                .boxed(),
+        );
+        resp.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        );
+        return resp;
     }
 
     let Some(route) = table.find(&host, &path) else {
-        if !info.tls {
-            if let Some(port) = table.redirect_port(&host) {
-                return redirect(&host, port, req.uri());
-            }
+        if !info.tls
+            && let Some(port) = table.redirect_port(&host)
+        {
+            return redirect(&host, port, req.uri());
         }
         return text(StatusCode::NOT_FOUND, "no route for this address\n");
     };
@@ -442,10 +441,10 @@ async fn handle(
         headers.insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
         headers.insert(header::UPGRADE, proto.clone());
     }
-    if !headers.contains_key(header::HOST) {
-        if let Ok(v) = HeaderValue::from_str(&host) {
-            headers.insert(header::HOST, v);
-        }
+    if !headers.contains_key(header::HOST)
+        && let Ok(v) = HeaderValue::from_str(&host)
+    {
+        headers.insert(header::HOST, v);
     }
     let client = client_ip(info.peer).to_string();
     // Never trust forwarding headers from the internet: replace them.
@@ -506,29 +505,29 @@ async fn handle(
             Ok(Ok(mut resp)) => {
                 state.record_success();
                 state.record_response(resp.status().as_u16());
-                if resp.status() == StatusCode::SWITCHING_PROTOCOLS {
-                    if let Some(client_upgrade) = client_upgrade {
-                        let upstream_upgrade = hyper::upgrade::on(&mut resp);
-                        tokio::spawn(splice_upgrade(
-                            client_upgrade,
-                            upstream_upgrade,
-                            guard,
-                            limits.tcp_idle_timeout,
-                        ));
-                        let (mut parts, _) = resp.into_parts();
-                        let proto = parts.headers.get(header::UPGRADE).cloned();
-                        remove_hop_by_hop(&mut parts.headers);
-                        parts
-                            .headers
-                            .insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
-                        if let Some(p) = proto {
-                            parts.headers.insert(header::UPGRADE, p);
-                        }
-                        return Response::from_parts(
-                            parts,
-                            Empty::new().map_err(|n| match n {}).boxed(),
-                        );
+                if resp.status() == StatusCode::SWITCHING_PROTOCOLS
+                    && let Some(client_upgrade) = client_upgrade
+                {
+                    let upstream_upgrade = hyper::upgrade::on(&mut resp);
+                    tokio::spawn(splice_upgrade(
+                        client_upgrade,
+                        upstream_upgrade,
+                        guard,
+                        limits.tcp_idle_timeout,
+                    ));
+                    let (mut parts, _) = resp.into_parts();
+                    let proto = parts.headers.get(header::UPGRADE).cloned();
+                    remove_hop_by_hop(&mut parts.headers);
+                    parts
+                        .headers
+                        .insert(header::CONNECTION, HeaderValue::from_static("upgrade"));
+                    if let Some(p) = proto {
+                        parts.headers.insert(header::UPGRADE, p);
                     }
+                    return Response::from_parts(
+                        parts,
+                        Empty::new().map_err(|n| match n {}).boxed(),
+                    );
                 }
                 let (mut parts, body) = resp.into_parts();
                 remove_hop_by_hop(&mut parts.headers);
@@ -605,12 +604,12 @@ impl Body for Guarded {
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, BoxError>>> {
         let poll = Pin::new(&mut self.inner).poll_frame(cx);
-        if let Poll::Ready(Some(Ok(frame))) = &poll {
-            if let Some(data) = frame.data_ref() {
-                self.state
-                    .bytes_received
-                    .fetch_add(data.len() as u64, std::sync::atomic::Ordering::Relaxed);
-            }
+        if let Poll::Ready(Some(Ok(frame))) = &poll
+            && let Some(data) = frame.data_ref()
+        {
+            self.state
+                .bytes_received
+                .fetch_add(data.len() as u64, std::sync::atomic::Ordering::Relaxed);
         }
         poll
     }

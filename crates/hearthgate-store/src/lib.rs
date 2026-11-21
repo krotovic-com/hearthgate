@@ -209,12 +209,12 @@ impl Store {
 
         let mut conn = self.conn();
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        if let Some(current) = latest_meta(&tx)? {
-            if current.hash == hash {
-                return Ok(Applied::Unchanged(current));
-            }
+        if let Some(current) = latest_meta(&tx)?
+            && current.hash == hash
+        {
+            return Ok(Applied::Unchanged(current));
         }
-        let created_at = humantime::format_rfc3339_seconds(SystemTime::now()).to_string();
+        let created_at = hearthgate_model::duration::format_rfc3339(SystemTime::now());
         tx.execute(
             "INSERT INTO revisions (created_at, author, message, hash, state, rollback_of)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

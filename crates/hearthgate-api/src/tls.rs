@@ -58,11 +58,11 @@ pub fn local_names() -> BTreeSet<String> {
         .into_iter()
         .map(str::to_owned)
         .collect();
-    if let Some(host) = hostname().map(|h| h.to_lowercase()) {
-        if host != "localhost" {
-            names.insert(format!("{host}.local"));
-            names.insert(host);
-        }
+    if let Some(host) = hostname().map(|h| h.to_lowercase())
+        && host != "localhost"
+    {
+        names.insert(format!("{host}.local"));
+        names.insert(host);
     }
     if let Ok(ifaces) = if_addrs::get_if_addrs() {
         for iface in ifaces {

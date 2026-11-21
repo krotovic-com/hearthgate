@@ -102,6 +102,18 @@ cd dashboard && npm test       # if you touched the dashboard or the API
 
 `npm test` runs svelte-check, the component tests, a build, and the Playwright end-to-end tests, which start a real Hearthgate (built with `cargo build`) and check every page with axe for WCAG AA. Playwright needs Chromium: `npx playwright install chromium`.
 
+If you changed dependencies, run `cargo deny check` (install it with `cargo install cargo-deny`): it fails on any RustSec advisory, a license that isn't compatible with MIT, or a source other than crates.io. An advisory that doesn't affect Hearthgate goes in `deny.toml` under `ignore`, with the reason.
+
+If you touched code that parses untrusted input (anything from the network, a feed or an import), run the fuzzers for a few minutes:
+
+```sh
+rustup toolchain install nightly
+cargo install cargo-fuzz
+scripts/fuzz.sh 120              # seconds per target; or name targets after it
+```
+
+Targets live in `fuzz/fuzz_targets`, with starting inputs in `fuzz/seeds`. A crash leaves its input in `fuzz/artifacts/TARGET/`; reproduce it with `cargo +nightly fuzz run TARGET fuzz/artifacts/TARGET/crash-…` from `fuzz/`, and add a regular test for it with the fix. New parsers of untrusted input should get a target. See [the threat model](docs/THREAT_MODEL.md) for what is untrusted.
+
 If you touched the build or release scripts, also run `scripts/build-release.sh 0.0.0-test` and `scripts/next-version.sh`. When CI does fail, fix everything it reports in one push rather than one failure at a time.
 
 ## Commit messages

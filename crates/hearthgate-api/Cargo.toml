@@ -22,7 +22,6 @@ axum.workspace = true
 futures-util.workspace = true
 getrandom.workspace = true
 hmac.workspace = true
-humantime.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 if-addrs.workspace = true

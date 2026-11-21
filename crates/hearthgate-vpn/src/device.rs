@@ -307,16 +307,16 @@ impl Device {
             .await
             .unwrap_or_default();
         for line in addresses.lines() {
-            if let Some(addr) = line.split_whitespace().skip_while(|w| *w != "inet").nth(1) {
-                if addr != setup.address.to_string() {
-                    let _ = self
-                        .run(
-                            &self.tools.ip,
-                            &["address", "del", addr, "dev", &self.name],
-                            None,
-                        )
-                        .await;
-                }
+            if let Some(addr) = line.split_whitespace().skip_while(|w| *w != "inet").nth(1)
+                && addr != setup.address.to_string()
+            {
+                let _ = self
+                    .run(
+                        &self.tools.ip,
+                        &["address", "del", addr, "dev", &self.name],
+                        None,
+                    )
+                    .await;
             }
         }
         self.run(

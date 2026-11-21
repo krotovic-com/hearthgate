@@ -17,9 +17,9 @@ TimeoutStopSec=45s
 # A dedicated, unprivileged user, created from hearthgate.sysusers.
 User=hearthgate
 Group=hearthgate
-# To route to Docker containers, let Hearthgate read the Docker socket by
-# uncommenting this line. Access to the Docker socket is equivalent to root,
-# so only do this if you use docker services.
+# To route to Docker containers and run managed containers and stacks, let
+# Hearthgate use the Docker socket by uncommenting this line. Access to the
+# Docker socket is equivalent to root, so only do this if you use Docker.
 #SupplementaryGroups=docker
 
 # Only the capabilities Hearthgate needs: bind ports below 1024, and load

@@ -73,7 +73,8 @@ fn parse_resolv_conf(text: &str) -> Vec<SocketAddr> {
 }
 
 /// Answers one query. Returns the reply, or `None` to stay silent.
-async fn answer(query: &[u8], settings: &Settings) -> Option<Vec<u8>> {
+/// Public for the fuzzers.
+pub async fn answer(query: &[u8], settings: &Settings) -> Option<Vec<u8>> {
     let Ok(request) = Message::from_vec(query) else {
         // Not even a header: nothing sensible to answer.
         if query.len() >= 2 {
@@ -84,29 +85,26 @@ async fn answer(query: &[u8], settings: &Settings) -> Option<Vec<u8>> {
         }
         return None;
     };
-    if request.message_type() != MessageType::Query {
+    if request.metadata.message_type != MessageType::Query {
         return None;
     }
-    let local = request.queries().first().and_then(|q| {
+    let local = request.queries.first().and_then(|q| {
         let name = q.name().to_lowercase().to_ascii();
         let name = name.trim_end_matches('.').to_owned();
         settings.zone.owns(&name).then_some((q.clone(), name))
     });
-    if request.op_code() != OpCode::Query || request.queries().len() != 1 {
-        return Message::error_msg(request.id(), request.op_code(), ResponseCode::NotImp)
+    let meta = request.metadata;
+    if meta.op_code != OpCode::Query || request.queries.len() != 1 {
+        return Message::error_msg(meta.id, meta.op_code, ResponseCode::NotImp)
             .to_vec()
             .ok();
     }
     if let Some((q, name)) = local {
-        let mut reply = Message::new();
-        reply
-            .set_id(request.id())
-            .set_message_type(MessageType::Response)
-            .set_op_code(OpCode::Query)
-            .set_authoritative(true)
-            .set_recursion_desired(request.recursion_desired())
-            .set_recursion_available(true)
-            .add_query(q.clone());
+        let mut reply = Message::new(meta.id, MessageType::Response, OpCode::Query);
+        reply.metadata.authoritative = true;
+        reply.metadata.recursion_desired = meta.recursion_desired;
+        reply.metadata.recursion_available = true;
+        reply.add_query(q.clone());
         match settings.zone.names.get(&name) {
             Some(addresses) => {
                 for ip in addresses {
@@ -122,12 +120,12 @@ async fn answer(query: &[u8], settings: &Settings) -> Option<Vec<u8>> {
             }
             None if name == settings.zone.zone => {}
             None => {
-                reply.set_response_code(ResponseCode::NXDomain);
+                reply.metadata.response_code = ResponseCode::NXDomain;
             }
         }
         return reply.to_vec().ok();
     }
-    forward(query, request.id(), &settings.upstream).await
+    forward(query, meta.id, &settings.upstream).await
 }
 
 /// Relays a query to the first upstream that answers.
@@ -201,10 +199,7 @@ async fn serve_udp(
 /// The UDP payload size a query advertises with EDNS(0).
 fn edns_size(query: &[u8]) -> Option<usize> {
     let message = Message::from_vec(query).ok()?;
-    message
-        .extensions()
-        .as_ref()
-        .map(|e| usize::from(e.max_payload()))
+    message.edns.as_ref().map(|e| usize::from(e.max_payload()))
 }
 
 async fn serve_tcp(
@@ -313,8 +308,8 @@ mod tests {
     use hickory_proto::rr::Name;
 
     fn query(name: &str, ty: RecordType) -> Vec<u8> {
-        let mut m = Message::new();
-        m.set_id(4242).set_recursion_desired(true);
+        let mut m = Message::new(4242, MessageType::Query, OpCode::Query);
+        m.metadata.recursion_desired = true;
         m.add_query(Query::query(Name::from_ascii(name).unwrap(), ty));
         m.to_vec().unwrap()
     }
@@ -358,11 +353,9 @@ mod tests {
             let mut buf = [0u8; 512];
             while let Ok((n, from)) = upstream.recv_from(&mut buf).await {
                 let request = Message::from_vec(&buf[..n]).unwrap();
-                let mut reply = Message::new();
-                reply
-                    .set_id(request.id())
-                    .set_message_type(MessageType::Response);
-                let q = request.queries()[0].clone();
+                let mut reply =
+                    Message::new(request.metadata.id, MessageType::Response, OpCode::Query);
+                let q = request.queries[0].clone();
                 reply.add_answer(Record::from_rdata(
                     q.name().clone(),
                     60,
@@ -383,11 +376,11 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(reply.id(), 4242);
-        assert!(reply.authoritative());
-        assert_eq!(reply.answers().len(), 1);
+        assert_eq!(reply.metadata.id, 4242);
+        assert!(reply.metadata.authoritative);
+        assert_eq!(reply.answers.len(), 1);
         assert_eq!(
-            reply.answers()[0].data().ip_addr(),
+            reply.answers[0].data.ip_addr(),
             Some("10.88.0.1".parse().unwrap())
         );
 
@@ -398,8 +391,8 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(reply.response_code(), ResponseCode::NoError);
-        assert!(reply.answers().is_empty(), "{:?}", reply.answers());
+        assert_eq!(reply.metadata.response_code, ResponseCode::NoError);
+        assert!(reply.answers.is_empty(), "{:?}", reply.answers);
 
         let reply = Message::from_vec(
             &answer(&query("nope.home.internal.", RecordType::A), &s)
@@ -407,7 +400,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(reply.response_code(), ResponseCode::NXDomain);
+        assert_eq!(reply.metadata.response_code, ResponseCode::NXDomain);
 
         // A public domain served by this machine resolves to it inside.
         let reply = Message::from_vec(
@@ -416,7 +409,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(reply.authoritative());
+        assert!(reply.metadata.authoritative);
 
         let reply = Message::from_vec(
             &answer(&query("example.org.", RecordType::A), &s)
@@ -424,9 +417,9 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(!reply.authoritative());
+        assert!(!reply.metadata.authoritative);
         assert_eq!(
-            reply.answers()[0].data().ip_addr(),
+            reply.answers[0].data.ip_addr(),
             Some("93.184.216.34".parse().unwrap())
         );
 
@@ -442,7 +435,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert_eq!(reply.response_code(), ResponseCode::ServFail);
+        assert_eq!(reply.metadata.response_code, ResponseCode::ServFail);
 
         assert!(answer(&[1], &s).await.is_none());
         let garbage = answer(&[0x12, 0x34, 0xff], &s).await.unwrap();
@@ -475,7 +468,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(Message::from_vec(&buf[..n]).unwrap().answers().len(), 1);
+        assert_eq!(Message::from_vec(&buf[..n]).unwrap().answers.len(), 1);
 
         let mut stream = TcpStream::connect(tcp_addr).await.unwrap();
         let q = query("ssh.home.internal.", RecordType::A);
@@ -487,7 +480,7 @@ mod tests {
         let len = stream.read_u16().await.unwrap();
         let mut reply = vec![0u8; usize::from(len)];
         stream.read_exact(&mut reply).await.unwrap();
-        assert_eq!(Message::from_vec(&reply).unwrap().answers().len(), 1);
+        assert_eq!(Message::from_vec(&reply).unwrap().answers.len(), 1);
         stop.cancel();
     }
 }

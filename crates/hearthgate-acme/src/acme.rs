@@ -134,19 +134,18 @@ impl Issuer {
     }
 
     async fn run_job(&self, settings: &AcmeSettings, job: &CertJob) -> Outcome {
-        if let Ok((_, info)) = self.store.load(CertSource::Acme, &job.interface) {
-            if info.covers(&job.domains)
-                && same_set(&info.domains, &job.domains)
-                && info.remaining() > settings.renew_before
-            {
-                self.failures_lock().remove(&job.interface);
-                return Outcome::Valid(info);
-            }
+        if let Ok((_, info)) = self.store.load(CertSource::Acme, &job.interface)
+            && info.covers(&job.domains)
+            && same_set(&info.domains, &job.domains)
+            && info.remaining() > settings.renew_before
+        {
+            self.failures_lock().remove(&job.interface);
+            return Outcome::Valid(info);
         }
-        if let Some(&(_, until)) = self.failures_lock().get(&job.interface) {
-            if Instant::now() < until {
-                return Outcome::Backoff { until };
-            }
+        if let Some(&(_, until)) = self.failures_lock().get(&job.interface)
+            && Instant::now() < until
+        {
+            return Outcome::Backoff { until };
         }
         match self.issue(settings, job).await {
             Ok(info) => {
@@ -184,10 +183,10 @@ impl Issuer {
     async fn account(&self, settings: &AcmeSettings) -> Result<Account, AcmeError> {
         let url = settings.directory_url().to_owned();
         let mut slot = self.account.lock().await;
-        if let Some((cached_url, account)) = slot.as_ref() {
-            if *cached_url == url {
-                return Ok(account.clone());
-            }
+        if let Some((cached_url, account)) = slot.as_ref()
+            && *cached_url == url
+        {
+            return Ok(account.clone());
         }
         let builder = || -> Result<_, AcmeError> {
             Ok(match &settings.directory_root {

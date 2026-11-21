@@ -172,11 +172,11 @@ pub async fn run(
 
 fn humanize(d: Duration) -> String {
     let s = d.as_secs();
-    if s % 86_400 == 0 {
+    if s.is_multiple_of(86_400) {
         format!("{}d", s / 86_400)
-    } else if s % 3600 == 0 {
+    } else if s.is_multiple_of(3600) {
         format!("{}h", s / 3600)
-    } else if s % 60 == 0 {
+    } else if s.is_multiple_of(60) {
         format!("{}m", s / 60)
     } else {
         format!("{s}s")

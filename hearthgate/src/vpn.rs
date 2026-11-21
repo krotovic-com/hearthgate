@@ -54,10 +54,10 @@ impl VpnCtl {
         self.state = state.clone();
         self.docker_forwarding().await;
         if !state.vpn.enabled {
-            if self.applied.take().is_some() || self.runtime.device.exists().await {
-                if let Err(e) = self.runtime.device.remove().await {
-                    error!("cannot remove the VPN interface: {e}");
-                }
+            if (self.applied.take().is_some() || self.runtime.device.exists().await)
+                && let Err(e) = self.runtime.device.remove().await
+            {
+                error!("cannot remove the VPN interface: {e}");
             }
             self.dns.send_replace(Arc::new(dns::Settings::default()));
             self.runtime
@@ -205,10 +205,10 @@ impl VpnCtl {
 
     /// Takes the interface down when Hearthgate stops.
     pub async fn stop(&self) {
-        if self.applied.is_some() {
-            if let Err(e) = self.runtime.device.remove().await {
-                warn!("cannot remove the VPN interface: {e}");
-            }
+        if self.applied.is_some()
+            && let Err(e) = self.runtime.device.remove().await
+        {
+            warn!("cannot remove the VPN interface: {e}");
         }
     }
 

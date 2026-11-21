@@ -401,12 +401,10 @@ async fn handle_tls(
     };
     let sni = hello.sni.as_deref();
     let acme = hello.alpn.iter().any(|p| p == tls::ACME_TLS_ALPN);
-    if !acme {
-        if let Some(pool) = plan.passthrough_for(sni) {
-            let client = tls::Prefixed::new(prefix, stream);
-            passthrough(client, peer, pool, &limits, &cancel).await;
-            return;
-        }
+    if !acme && let Some(pool) = plan.passthrough_for(sni) {
+        let client = tls::Prefixed::new(prefix, stream);
+        passthrough(client, peer, pool, &limits, &cancel).await;
+        return;
     }
     if !acme && !plan.terminates(sni) {
         debug!(client = %peer, sni = ?sni, "no interface serves this name");

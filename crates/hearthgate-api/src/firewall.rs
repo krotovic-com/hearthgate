@@ -208,7 +208,7 @@ pub(crate) async fn ban(
     }
     let time = match req.duration.as_deref() {
         None | Some("") => firewall.auto_ban.ban_time,
-        Some(text) => humantime::parse_duration(text).map_err(|e| {
+        Some(text) => hearthgate_model::duration::parse_duration(text).map_err(|e| {
             ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, format!("duration: {e}"))
         })?,
     };
@@ -268,10 +268,8 @@ pub(crate) async fn close_while_pending(
             .extensions()
             .get::<Accepted>()
             .is_some_and(|a| a.0 <= p.applied_at);
-        if old {
-            if let Some(close) = request.extensions().get::<CloseConnection>() {
-                close.0.cancel();
-            }
+        if old && let Some(close) = request.extensions().get::<CloseConnection>() {
+            close.0.cancel();
         }
     }
     let pending = pending.is_some();
