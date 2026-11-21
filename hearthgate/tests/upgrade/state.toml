@@ -1,0 +1,74 @@
+# The state the upgrade fixtures are made with. It must stay valid for every
+# release from 0.2.0 on, so use only what 0.2.0 understood.
+
+[limits]
+header_timeout = "20s"
+upstream_timeout = "90s"
+
+[[interfaces]]
+name = "web"
+bind = ["127.0.0.1"]
+domains = ["app.example.com"]
+certificate = "fixture"
+listeners = [
+  { port = 28080, mode = "http" },
+  { port = 28443, mode = "https" },
+]
+
+[[interfaces]]
+name = "ssh"
+bind = ["127.0.0.1"]
+listeners = [{ port = 28222, mode = "raw" }]
+
+[[interfaces]]
+name = "game"
+bind = ["127.0.0.1"]
+listeners = [{ port = 28015, mode = "raw", protocol = "both" }]
+
+[[services]]
+name = "app-1"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 28901 }
+health = { type = "http", path = "/healthz", interval = "5s" }
+
+[[services]]
+name = "app-2"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 28902 }
+health = { type = "tcp", interval = "10s" }
+
+[[services]]
+name = "sshd"
+kind = "external"
+host = "127.0.0.1"
+ports = { ssh = 22 }
+
+[[services]]
+name = "game-server"
+kind = "docker"
+container = "game"
+ports = { game = 27015 }
+
+[[routes]]
+name = "app"
+interface = "web"
+listener = 28443
+strategy = "least-connections"
+targets = [
+  { service = "app-1", port = "http" },
+  { service = "app-2", port = "http" },
+]
+
+[[routes]]
+name = "ssh"
+interface = "ssh"
+listener = 28222
+targets = [{ service = "sshd", port = "ssh" }]
+
+[[routes]]
+name = "game"
+interface = "game"
+listener = 28015
+targets = [{ service = "game-server", port = "game" }]

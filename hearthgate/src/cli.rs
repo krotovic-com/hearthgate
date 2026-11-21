@@ -169,6 +169,11 @@ pub enum Command {
         #[command(subcommand)]
         action: DockerCommand,
     },
+    /// Back up the state, certificates and keys, or restore a backup.
+    Backup {
+        #[command(subcommand)]
+        action: BackupCommand,
+    },
     /// Print the admin API's OpenAPI document.
     Openapi,
     /// Manage manually uploaded certificates.
@@ -181,6 +186,26 @@ pub enum Command {
         /// Show what would change without rolling back.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BackupCommand {
+    /// Write a backup now.
+    Create {
+        /// File to write. Default: a new file in the backup directory.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List the backups in the backup directory.
+    List,
+    /// Restore a backup into the data directory. Stop the service first.
+    Restore {
+        file: PathBuf,
+        /// Replace an existing state. What was there is kept in
+        /// `before-restore-TIME` inside the data directory.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -257,6 +282,7 @@ impl Cli {
             Command::Firewall { action } => firewall(&bootstrap, &action),
             Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
             Command::Docker { action } => crate::cli_docker::run(&bootstrap, action),
+            Command::Backup { action } => backup(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -265,6 +291,50 @@ impl Cli {
             }
         }
     }
+}
+
+fn backup(bootstrap: &Bootstrap, action: BackupCommand) -> Result<ExitCode> {
+    let dir = bootstrap.backup.dir_or_default(&bootstrap.data_dir);
+    match action {
+        BackupCommand::Create { output } => {
+            let path = output.unwrap_or_else(|| dir.join(crate::backup::file_name()));
+            let manifest = crate::backup::create(&bootstrap.data_dir, &path)?;
+            println!(
+                "Wrote {} (Hearthgate {}). It holds private keys: keep it safe.",
+                path.display(),
+                manifest.version
+            );
+        }
+        BackupCommand::List => {
+            let all = crate::backup::list(&dir);
+            if all.is_empty() {
+                println!("No backups in {}.", dir.display());
+            }
+            for path in all.iter().rev() {
+                let size = std::fs::metadata(path).map_or(0, |m| m.len());
+                match crate::backup::inspect(path) {
+                    Ok(m) => println!(
+                        "{}  {}  Hearthgate {}  {} KiB",
+                        path.display(),
+                        m.created,
+                        m.version,
+                        size.div_ceil(1024)
+                    ),
+                    Err(e) => println!("{}  unreadable: {e:#}", path.display()),
+                }
+            }
+        }
+        BackupCommand::Restore { file, force } => {
+            let manifest = crate::backup::restore(&file, &bootstrap.data_dir, force)?;
+            println!(
+                "Restored the backup from {} (Hearthgate {}) into {}. Start the service again.",
+                manifest.created,
+                manifest.version,
+                bootstrap.data_dir.display()
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn firewall(bootstrap: &Bootstrap, action: &FirewallCommand) -> Result<ExitCode> {

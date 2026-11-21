@@ -190,6 +190,8 @@ The version in `Cargo.toml` stays `0.0.0-dev`. Release builds get the real versi
 
 To preview what the next release would be, run `scripts/next-version.sh` locally.
 
+After each release, add an upgrade fixture for it, so every later version is tested against data that release wrote: `scripts/make-upgrade-fixture.sh X.Y.Z`, then commit `hearthgate/tests/upgrade/vX.Y.Z` (its keys and tokens are throwaway). `cargo test -p hearthgate --test upgrade` opens each fixture with the current code, and checks the state, history, certificates, admin token, dashboard login and a backup round trip. A database migration must never break it; add a new migration rather than changing a released one.
+
 ## Brand assets
 
 Logos and the brand guide live in [docs/brand](docs/brand). Follow the rules in `BRAND.md` when using them.

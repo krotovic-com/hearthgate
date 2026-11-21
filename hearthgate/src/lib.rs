@@ -4,6 +4,7 @@
 //! settings and the daemon that wires the subsystems together. The
 //! subsystems themselves live in the `hearthgate-*` crates.
 
+pub mod backup;
 pub mod cli;
 mod cli_docker;
 mod cli_vpn;

@@ -394,6 +394,9 @@ drain_timeout = "30s"           # removed listeners and shutdown
 | `hearthgate docker logs NAME [-n N]` | A managed container's recent output |
 | `hearthgate docker update NAME` | Pull the newest image of a container or stack and recreate it if it changed |
 | `hearthgate docker check-updates` | Whether newer images exist, without changing anything |
+| `hearthgate backup create [-o FILE]` | Write a backup now |
+| `hearthgate backup list` | Backups in the backup directory |
+| `hearthgate backup restore FILE [--force]` | Restore a backup (stop the service first) |
 | `hearthgate openapi` | Print the admin API's OpenAPI document |
 
 `--data-dir` (or `HEARTHGATE_DATA_DIR`) points any command at another data directory, which is handy for trying things out without root.
@@ -440,9 +443,33 @@ Browser sessions also need the `X-CSRF-Token` header (from `GET /api/v1/auth/ses
 
 `/metrics` exposes, among others: `hearthgate_upstream_healthy`, `hearthgate_upstream_active`, `hearthgate_upstream_connections_total`, `hearthgate_upstream_failures_total`, sent and received bytes, `hearthgate_http_responses_total` by status class, `hearthgate_http_local_responses_total`, `hearthgate_listener_open_connections`, `hearthgate_certificate_expiry_timestamp_seconds` and `hearthgate_revision`. Set `admin.metrics_without_token = true` to let a Prometheus server on your LAN scrape it without the token.
 
+## Backups and upgrades
+
+Hearthgate writes a backup once a day to `/var/lib/hearthgate/backups` and keeps the last 7. A backup holds everything it can't rebuild: the state with its whole history, dashboard accounts and API tokens, certificates, ACME accounts, the VPN server key, the dashboard certificate and the admin token. Change the schedule or the place in the bootstrap file:
+
+```toml
+[backup]
+interval = "1day"
+keep = 7
+dir = "/srv/backups/hearthgate"   # must be writable: systemctl edit hearthgate, then ReadWritePaths=/srv/backups/hearthgate
+```
+
+Backups hold private keys and are readable only by the `hearthgate` user. Copy them off the machine (it's a `.tar.gz` you can inspect with `tar -tzf`), and keep them as safe as the server.
+
+To restore, for example onto a new machine with Hearthgate installed:
+
+```sh
+sudo systemctl stop hearthgate
+sudo -u hearthgate hearthgate backup restore /path/to/hearthgate-backup-20261121T040000Z.tar.gz
+sudo systemctl start hearthgate
+```
+
+If the data directory already has a state, add `--force`: what was there is moved to `before-restore-TIME` inside it, not deleted. Managed containers and stacks are started again from the restored state; their volumes are not part of the backup, so back those up with your usual tools.
+
+**Upgrading.** Replace the binary and restart the service. The state database is upgraded on start, from any earlier release in one step, and a backup made by an older release restores on a newer one. Going back to an older release after an upgrade isn't supported: restore a backup made before the upgrade instead.
+
 ## Operating it
 
 - `systemctl reload hearthgate` makes the gateway re-read the current revision at once.
 - Logs go to the journal: `journalctl -u hearthgate -f`. Set `log = "hearthgate=debug,info"` in the bootstrap file for more detail.
-- Back up `/var/lib/hearthgate`: it holds the database (with dashboard accounts), certificates, ACME account keys, the VPN key, the dashboard certificate and the admin token, all readable only by the `hearthgate` user.
 - Ports a listener cannot bind (for example because another program uses them) are reported in the log and in `/api/v1/status`, and retried every 10 seconds. Everything else keeps working.

@@ -168,6 +168,22 @@ impl Store {
         })
     }
 
+    /// Writes a consistent copy of the whole database to `path`, which must
+    /// not exist yet. Safe while the daemon is writing.
+    pub fn snapshot(&self, path: &Path) -> Result<(), StoreError> {
+        let path = path
+            .to_str()
+            .ok_or_else(|| StoreError::Io(std::io::Error::other("path is not UTF-8")))?;
+        self.conn().execute("VACUUM INTO ?1", [path])?;
+        Ok(())
+    }
+
+    /// The schema version, which grows with each migration.
+    #[must_use]
+    pub fn schema_version() -> i64 {
+        i64::try_from(MIGRATIONS.len()).expect("few migrations")
+    }
+
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(PoisonError::into_inner)
     }

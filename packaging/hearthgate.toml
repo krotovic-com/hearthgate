@@ -36,3 +36,14 @@ enabled = true
 socket = "/var/run/docker.sock"
 # Only follow existing containers; never create, change or remove any.
 # manage = false
+
+[backup]
+# A backup of the state (with its history and dashboard accounts),
+# certificates and keys, once a day. See `hearthgate backup`.
+enabled = true
+interval = "1day"
+keep = 7
+# Default: /var/lib/hearthgate/backups. Somewhere else must be writable by
+# the service: add `ReadWritePaths=/srv/backups/hearthgate` to the systemd
+# unit with `systemctl edit hearthgate`.
+# dir = "/srv/backups/hearthgate"

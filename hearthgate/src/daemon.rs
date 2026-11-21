@@ -133,6 +133,11 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
             stop.clone(),
         ));
     }
+    tokio::spawn(crate::backup::run(
+        bootstrap.data_dir.clone(),
+        bootstrap.backup.clone(),
+        stop.clone(),
+    ));
     hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
     let access = if bootstrap.admin.disabled() {
         info!("admin API is off (admin.listen = [])");

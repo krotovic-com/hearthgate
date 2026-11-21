@@ -1,0 +1,143 @@
+# Hearthgate desired state, exported by 0.2.0 (revision 2 by cli:unknown at 2026-11-21T00:25:01Z: Second revision).
+
+[acme]
+staging = false
+accept_terms = false
+renew_before = "30days"
+
+[limits]
+max_body_bytes = 104857600
+header_timeout = "20s"
+upstream_timeout = "1m 30s"
+connect_timeout = "5s"
+tcp_idle_timeout = "1h"
+udp_session_timeout = "1m"
+drain_timeout = "30s"
+
+[[interfaces]]
+name = "game"
+domains = []
+bind = ["127.0.0.1"]
+
+[[interfaces.listeners]]
+port = 28015
+mode = "raw"
+protocol = "both"
+
+[[interfaces]]
+name = "ssh"
+domains = []
+bind = ["127.0.0.1"]
+
+[[interfaces.listeners]]
+port = 28222
+mode = "raw"
+protocol = "tcp"
+
+[[interfaces]]
+name = "web"
+domains = ["app.example.com"]
+bind = ["127.0.0.1"]
+certificate = "fixture"
+
+[[interfaces.listeners]]
+port = 28080
+mode = "http"
+protocol = "tcp"
+
+[[interfaces.listeners]]
+port = 28443
+mode = "https"
+protocol = "tcp"
+
+[[services]]
+name = "app-1"
+kind = "external"
+host = "127.0.0.1"
+
+[services.ports]
+http = 28901
+
+[services.health]
+type = "http"
+path = "/healthz"
+interval = "5s"
+timeout = "2s"
+healthy_threshold = 2
+unhealthy_threshold = 3
+
+[[services]]
+name = "app-2"
+kind = "external"
+host = "127.0.0.1"
+
+[services.ports]
+http = 28902
+
+[services.health]
+type = "tcp"
+path = "/"
+interval = "10s"
+timeout = "2s"
+healthy_threshold = 2
+unhealthy_threshold = 3
+
+[[services]]
+name = "game-server"
+kind = "docker"
+container = "game"
+
+[services.ports]
+game = 27015
+
+[[services]]
+name = "sshd"
+kind = "external"
+host = "127.0.0.1"
+
+[services.ports]
+ssh = 22
+
+[[routes]]
+name = "app"
+interface = "web"
+listener = 28443
+path_prefix = "/"
+strip_prefix = false
+strategy = "round-robin"
+
+[[routes.targets]]
+service = "app-1"
+port = "http"
+weight = 1
+
+[[routes.targets]]
+service = "app-2"
+port = "http"
+weight = 1
+
+[[routes]]
+name = "game"
+interface = "game"
+listener = 28015
+path_prefix = "/"
+strip_prefix = false
+strategy = "round-robin"
+
+[[routes.targets]]
+service = "game-server"
+port = "game"
+weight = 1
+
+[[routes]]
+name = "ssh"
+interface = "ssh"
+listener = 28222
+path_prefix = "/"
+strip_prefix = false
+strategy = "round-robin"
+
+[[routes.targets]]
+service = "sshd"
+port = "ssh"
+weight = 1
