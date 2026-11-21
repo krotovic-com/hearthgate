@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hearthgate: one way in to your home server</title>
+<meta name="description" content="Hearthgate is a secure-by-default gateway for home servers, written in Rust. Publish the services you choose with automatic certificates and reach the rest over the built-in WireGuard VPN.">
+<link rel="canonical" href="https://hearthgate.dev/">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="assets/app-icon-512.png">
+<meta name="theme-color" content="#0E1A2B">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hearthgate">
+<meta property="og:title" content="Hearthgate: one way in to your home server">
+<meta property="og:description" content="Expose what you choose. Reach the rest over VPN. A secure-by-default gateway for home servers, written in Rust.">
+<meta property="og:url" content="https://hearthgate.dev/">
+<meta property="og:image" content="https://hearthgate.dev/assets/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="assets/fonts.css">
+<style>
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+</style>
+<style>
+/* Layout: a dark "outside" hero where traffic meets the ring, then the calm, light "inside" of the house:
+   what's closed, what it does, how it looks, how to describe it, how to install it. */
+:root {
+  /* Brand constants (from BRAND.md) */
+  --ink: #0E1A2B;
+  --ink-raised: #16263D;
+  --route: #3B6EF5;
+  --sky: #DCE6FF;
+  --tunnel: #2BC6A0;
+  --paper: #F6F8FB;
+  --warn: #F2A93B;
+  --crit: #E5484D;
+
+  /* Theme tokens (light) */
+  --bg: #F6F8FB;
+  --surface: #FFFFFF;
+  --surface-2: #EEF2F8;
+  --fg: #0E1A2B;
+  --muted: #5A6B85;
+  --line: #E3E8F0;
+  --accent: #2F5FE0;          /* Route, darkened for AA text on light */
+  --accent-tint: #DCE6FF;
+  --ok: #138A6E;              /* Tunnel, darkened for AA text on light */
+  --ok-tint: #D9F5EC;
+  --code-bg: #0E1A2B;
+  --code-fg: #DCE3EE;
+
+  /* Hero stays "outside" in both themes */
+  --hero-bg: #0E1A2B;
+  --hero-fg: #F6F8FB;
+  --hero-muted: #8A9BB8;
+  --hero-line: #23354F;
+
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --step--1: 0.8125rem;
+  --step-0: 1rem;
+  --step-1: 1.1875rem;
+  --step-2: 1.5rem;
+  --step-3: 2.125rem;
+  --step-4: clamp(2.6rem, 5.2vw, 4rem);
+
+  --radius: 10px;
+  --wrap: 1160px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B1524;
+    --surface: #12213A;
+    --surface-2: #16263D;
+    --fg: #EEF2F8;
+    --muted: #9AAAC4;
+    --line: #22344F;
+    --accent: #7E9FFF;
+    --accent-tint: #1B2C52;
+    --ok: #4FD8B5;
+    --ok-tint: #12342F;
+    --code-bg: #08111E;
+    --code-fg: #DCE3EE;
+    --hero-bg: #08111E;
+    --hero-line: #1C2C45;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B1524;
+  --surface: #12213A;
+  --surface-2: #16263D;
+  --fg: #EEF2F8;
+  --muted: #9AAAC4;
+  --line: #22344F;
+  --accent: #7E9FFF;
+  --accent-tint: #1B2C52;
+  --ok: #4FD8B5;
+  --ok-tint: #12342F;
+  --code-bg: #08111E;
+  --code-fg: #DCE3EE;
+  --hero-bg: #08111E;
+  --hero-line: #1C2C45;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--hero-bg);
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--route); outline-offset: 3px; border-radius: 4px; }
+code, kbd, .mono { font-family: var(--font-mono); font-size: 0.92em; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.025em; line-height: 1.12; text-wrap: balance; margin: 0; }
+h2 { font-size: var(--step-3); }
+h3 { font-size: var(--step-1); letter-spacing: -0.015em; }
+p { margin: 0; }
+
+.wrap {
+  max-width: var(--wrap); margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 720px) {
+  .wrap { padding-left: max(32px, env(safe-area-inset-left, 0px)); padding-right: max(32px, env(safe-area-inset-right, 0px)); }
+}
+
+.eyebrow {
+  font-family: var(--font-mono); font-size: var(--step--1); letter-spacing: 0.04em;
+  color: var(--muted); text-transform: none;
+}
+.section { padding-block: clamp(64px, 9vw, 112px); }
+.section-head { display: grid; gap: 14px; max-width: 46rem; margin-bottom: 44px; }
+.section-head p.lede { color: var(--muted); font-size: var(--step-1); line-height: 1.55; max-width: 40rem; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  font: 600 0.95rem/1 var(--font-body); text-decoration: none;
+  padding: 13px 18px; border-radius: 8px; border: 1px solid transparent;
+  cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, color .15s;
+}
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-primary { background: var(--route); color: #fff; }
+.btn-primary:hover { background: #2F5FE0; }
+.btn-ghost-dark { color: var(--hero-fg); border-color: #34496A; background: transparent; }
+.btn-ghost-dark:hover { border-color: var(--hero-muted); }
+.btn-ghost { color: var(--fg); border-color: var(--line); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--muted); }
+
+/* ---------- Nav ---------- */
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: color-mix(in srgb, var(--hero-bg) 88%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--hero-line);
+}
+.nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--hero-fg); text-decoration: none; }
+.brand svg { width: 28px; height: 28px; }
+.brand span { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; letter-spacing: -0.03em; }
+.nav-links { display: flex; gap: 22px; margin-left: auto; align-items: center; }
+.nav-links a { color: var(--hero-muted); text-decoration: none; font-size: 0.92rem; font-weight: 500; }
+.nav-links a:hover { color: var(--hero-fg); }
+.nav-links .btn { padding: 9px 14px; font-size: 0.88rem; color: #fff; }
+@media (max-width: 720px) { .nav-links a.hide-sm { display: none; } .nav-links { gap: 14px; } }
+
+/* ---------- Hero ---------- */
+.hero { background: var(--hero-bg); color: var(--hero-fg); overflow: hidden; position: relative; }
+.hero::after { /* faint port grid: the outside world */
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: radial-gradient(circle at 1px 1px, #22385A 1px, transparent 1.2px);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(90deg, transparent 0%, transparent 45%, #000 85%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 45%, #000 85%);
+}
+.hero .wrap {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: center;
+  padding-block: 72px 80px;
+}
+.hero-copy { display: grid; gap: 26px; min-width: 0; }
+.hero .eyebrow { color: var(--hero-muted); display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid #2A3F60; color: var(--hero-fg); font-family: var(--font-mono); font-size: 0.78rem;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tunnel); flex: none; }
+.hero h1 { font-size: var(--step-4); letter-spacing: -0.035em; font-weight: 700; }
+.hero h1 em { font-style: normal; color: var(--route); }
+.hero .sub { font-size: var(--step-1); color: #C3CEE0; max-width: 34rem; line-height: 1.55; }
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.oneliner {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  background: #0A1422; border: 1px solid var(--hero-line); border-radius: 8px; padding: 6px 6px 6px 14px;
+  font-family: var(--font-mono); font-size: 0.82rem; color: #C3CEE0; max-width: 36rem;
+}
+.oneliner code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; font-size: 1em; }
+.oneliner code::-webkit-scrollbar { display: none; }
+.oneliner .prompt { color: var(--tunnel); user-select: none; }
+.copy {
+  flex: none; font: 500 0.78rem/1 var(--font-body); color: var(--hero-fg);
+  background: #16263D; border: 1px solid #2A3F60; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+}
+.copy:hover { border-color: var(--hero-muted); }
+.hero-note { font-size: var(--step--1); color: var(--hero-muted); }
+
+.diagram { min-width: 0; }
+.diagram svg { width: 100%; height: auto; display: block; overflow: visible; }
+.diagram text { font-family: var(--font-mono); }
+
+@media (max-width: 900px) {
+  .hero .wrap { grid-template-columns: 1fr; padding-block: 48px 56px; }
+  .diagram { order: 2; max-width: 560px; }
+}
+
+/* ---------- Facts strip ---------- */
+.facts { border-bottom: 1px solid var(--line); background: var(--surface); }
+.facts .wrap { display: flex; flex-wrap: wrap; gap: 10px 36px; padding-block: 18px; font-size: 0.9rem; color: var(--muted); }
+.facts b { color: var(--fg); font-weight: 600; }
+
+/* ---------- Port ledger ---------- */
+.ledger-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+.ledger-copy { display: grid; gap: 18px; }
+.ledger-copy p { color: var(--muted); max-width: 32rem; }
+.ledger-copy ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.ledger-copy li { display: grid; grid-template-columns: 18px 1fr; gap: 12px; }
+.ledger-copy li svg { width: 18px; height: 18px; margin-top: 3px; color: var(--ok); }
+.ledger {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; min-width: 0;
+}
+.ledger-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); font-size: 0.85rem; color: var(--muted); flex-wrap: wrap; }
+.ledger-top b { color: var(--fg); font-weight: 600; }
+.ledger-scroll { overflow-x: auto; }
+.ledger table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 520px; font-variant-numeric: tabular-nums; }
+.ledger th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.78rem; padding: 10px 18px; background: var(--surface-2); }
+.ledger td { padding: 12px 18px; border-top: 1px solid var(--line); vertical-align: top; }
+.ledger td.mono { font-family: var(--font-mono); font-size: 0.82rem; white-space: nowrap; }
+.ledger .why { color: var(--muted); font-size: 0.82rem; }
+.state { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.state.public { background: var(--accent-tint); color: var(--accent); }
+.state.vpn { background: var(--ok-tint); color: var(--ok); }
+.state.closed { background: var(--surface-2); color: var(--muted); }
+.state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+@media (max-width: 900px) { .ledger-grid { grid-template-columns: 1fr; gap: 32px; } }
+
+/* ---------- Features ---------- */
+.features-wrap { background: var(--surface); border-block: 1px solid var(--line); }
+.groups { display: grid; gap: 56px; }
+.group { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; }
+.group-label { display: grid; gap: 8px; align-content: start; position: sticky; top: 84px; }
+.group-label h3 { font-size: var(--step-2); }
+.group-label p { color: var(--muted); font-size: 0.92rem; }
+.feat-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--line); }
+.feat { padding: 22px 24px 24px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px; align-content: start; }
+.feat:nth-child(even) { padding-left: 24px; padding-right: 0; border-left: 1px solid var(--line); }
+.feat h4 { margin: 0; font: 600 1rem/1.35 var(--font-body); display: flex; gap: 10px; align-items: center; }
+.feat h4 svg { width: 20px; height: 20px; color: var(--accent); flex: none; }
+.feat p { color: var(--muted); font-size: 0.93rem; }
+.feat .sample { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg); background: var(--surface-2); border-radius: 6px; padding: 6px 9px; justify-self: start; margin-top: 4px; max-width: 100%; overflow-x: auto; white-space: nowrap; }
+.feat.soon h4 svg { color: var(--muted); }
+.tag-soon { font: 500 0.7rem/1 var(--font-mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; }
+@media (max-width: 860px) {
+  .group { grid-template-columns: 1fr; gap: 18px; }
+  .group-label { position: static; }
+}
+@media (max-width: 620px) {
+  .feat-list { grid-template-columns: 1fr; }
+  .feat, .feat:nth-child(even) { padding-left: 0; padding-right: 0; border-left: 0; }
+}
+
+/* ---------- Dashboard showcase (matches Figma "Dashboard" page, light mode) ---------- */
+.showcase-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+.tab {
+  font: 500 0.9rem/1 var(--font-body); padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.tab[aria-selected="true"] { color: var(--fg); border-color: var(--accent); background: var(--accent-tint); }
+.window {
+  border-radius: 12px; overflow: hidden; border: 1px solid var(--line);
+  box-shadow: 0 30px 60px -30px rgba(14,26,43,.35), 0 10px 20px -12px rgba(14,26,43,.18);
+  background: #F6F8FB; max-width: 100%;
+}
+.window-bar { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: #EEF2F8; border-bottom: 1px solid #E3E8F0; }
+.window-bar i { width: 10px; height: 10px; border-radius: 50%; background: #CBD5E3; flex: none; }
+.window-bar .addr { margin-left: 12px; font: 400 0.75rem/1 var(--font-mono); color: #5A6B85; background: #fff; border: 1px solid #E3E8F0; border-radius: 6px; padding: 5px 10px; display: inline-flex; gap: 6px; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; }
+.stage-scroll { overflow-x: auto; overflow-y: hidden; }
+.stage-box { position: relative; }
+.stage { width: 1440px; transform-origin: 0 0; position: absolute; top: 0; left: 0; }
+.screen[hidden] { display: none !important; }
+.showcase-note { margin-top: 14px; font-size: 0.85rem; color: var(--muted); }
+
+/* The app itself: fixed light palette, like the Figma screens */
+.d-app { display: grid; grid-template-columns: 248px 1fr; background: #F6F8FB; color: #0E1A2B; font: 400 14px/1.45 var(--font-body); }
+.d-side { background: #fff; border-right: 1px solid #E3E8F0; padding: 22px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+.d-logo { display: flex; align-items: center; gap: 9px; padding: 0 4px 22px; }
+.d-logo svg { width: 26px; height: 26px; }
+.d-logo span { font: 600 23px/1 var(--font-display); letter-spacing: -0.03em; color: #0E1A2B; }
+.d-nav { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; color: #33445E; font-size: 14.5px; font-weight: 500; }
+.d-nav svg { width: 16px; height: 16px; color: #5A6B85; flex: none; }
+.d-nav.on { background: #DCE6FF; color: #2F5FE0; }
+.d-nav.on svg { color: #2F5FE0; }
+.d-health { margin-top: auto; background: #F6F8FB; border-radius: 8px; padding: 14px 12px; display: grid; gap: 4px; }
+.d-health b { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.d-health b::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #2BC6A0; }
+.d-health span { font: 400 12px/1.6 var(--font-mono); color: #5A6B85; }
+.d-main { padding: 32px; display: grid; gap: 24px; align-content: start; min-width: 0; }
+.d-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.d-head h5 { margin: 0 0 6px; font: 600 29px/1.15 var(--font-display); letter-spacing: -0.025em; }
+.d-head p { color: #5A6B85; font-size: 14.5px; max-width: 700px; }
+.d-actions { display: flex; gap: 12px; flex: none; }
+.d-btn { font: 500 14.5px/1 var(--font-body); padding: 11px 16px; border-radius: 8px; border: 1px solid #CBD5E3; background: #fff; color: #0E1A2B; display: inline-flex; gap: 8px; align-items: center; }
+.d-btn.p { background: #3B6EF5; border-color: #3B6EF5; color: #fff; }
+.d-btn.s { font-size: 12.5px; padding: 6px 12px; border-radius: 6px; }
+.d-btn.danger { background: #D93B40; border-color: #D93B40; color: #fff; }
+.d-btn.link { border-color: transparent; background: transparent; }
+.d-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.d-stat { background: #fff; border: 1px solid #E3E8F0; border-radius: 10px; padding: 20px 16px; display: grid; gap: 6px; }
+.d-stat small { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #33445E; font-weight: 500; }
+.d-stat b { font: 600 29px/1.1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.d-stat span { font-size: 12.5px; color: #5A6B85; }
+.d-card { background: #fff; border: 1px solid #E3E8F0; border-radius: 12px; padding: 24px; min-width: 0; }
+.d-card h6 { margin: 0 0 14px; font: 600 21px/1.2 var(--font-display); letter-spacing: -0.02em; }
+.d-card .note { color: #5A6B85; font-size: 12.5px; margin-bottom: 14px; }
+.d-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: start; }
+.d-col { display: grid; gap: 24px; }
+.d-mono { font-family: var(--font-mono); font-size: 12.5px; }
+.d-muted { color: #5A6B85; }
+.d-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.d-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.d-badge.crit { background: #FDE7E8; color: #C9363B; }
+.d-badge.warn { background: #FDF0DC; color: #A86A0C; }
+.d-badge.ok { background: #D9F5EC; color: #0F7A5F; }
+.d-badge.off { background: #EEF2F8; color: #5A6B85; }
+.d-badge.limit { background: #FDF0DC; color: #A86A0C; }
+.d-label { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #33445E; font-weight: 500; }
+
+/* overview */
+.d-legend { display: flex; gap: 18px; font-size: 12.5px; color: #5A6B85; margin-bottom: 18px; }
+.d-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.d-bars { height: 300px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; align-items: end; }
+.d-bar { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.d-bar .a { background: #3B6EF5; }
+.d-bar .b { background: #D93B40; }
+.d-axis { display: flex; justify-content: space-between; margin-top: 10px; font: 400 12px/1 var(--font-mono); color: #5A6B85; }
+.d-attn { display: grid; gap: 16px; }
+.d-attn > div { border: 1px solid #E3E8F0; border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; }
+.d-attn .t { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 500; }
+.d-attn p { color: #5A6B85; font-size: 12.5px; }
+.d-attn .acts { display: flex; gap: 8px; align-items: center; }
+.d-activity { display: grid; gap: 14px; }
+.d-activity div { display: grid; grid-template-columns: 52px 16px 1fr; align-items: center; gap: 0 4px; }
+.d-activity .tm { font: 400 12px/1 var(--font-mono); color: #5A6B85; }
+.d-activity i { width: 7px; height: 7px; border-radius: 50%; background: #5A6B85; }
+.d-kv { display: grid; grid-template-columns: 122px 1fr; gap: 14px 0; font-size: 12.5px; }
+.d-kv dt { color: #5A6B85; }
+.d-kv dd { margin: 0; font-family: var(--font-mono); }
+
+/* routes */
+.d-map { position: relative; height: 740px; }
+.d-map svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.d-node { position: absolute; width: 240px; height: 64px; background: #fff; border: 1px solid #E3E8F0; border-radius: 8px; display: flex; gap: 12px; align-items: center; padding: 0 14px; }
+.d-node svg { width: 15px; height: 15px; color: #5A6B85; flex: none; }
+.d-node b { font-weight: 500; display: block; }
+.d-node span { font: 400 12px/1.4 var(--font-mono); color: #5A6B85; }
+.d-node.sel { border: 2px solid #3B6EF5; }
+.d-node.sel2 { border-color: #3B6EF5; }
+.d-node.down { border-color: #D93B40; }
+.d-node.ghost { border-style: dashed; color: #5A6B85; }
+.d-node.ghost b { font-weight: 400; }
+.d-map .d-label { position: absolute; }
+.d-pilltag { position: absolute; background: #3B6EF5; color: #fff; font-size: 12px; padding: 2px 9px; border-radius: 999px; }
+.d-keys { position: absolute; bottom: 0; left: 0; display: flex; gap: 20px; font-size: 12.5px; color: #33445E; }
+.d-keys i { display: inline-block; width: 20px; height: 0; border-top: 2px solid; margin-right: 8px; vertical-align: 3px; }
+.d-form { display: grid; gap: 8px; }
+.d-form label { font-weight: 500; font-size: 14.5px; margin-top: 12px; }
+.d-select { border: 1px solid #CBD5E3; border-radius: 8px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; }
+.d-select::after { content: ""; width: 7px; height: 7px; border-right: 1.6px solid #33445E; border-bottom: 1.6px solid #33445E; transform: rotate(45deg) translateY(-3px); }
+.d-target { border: 1px solid #E3E8F0; border-radius: 6px; padding: 7px 14px; display: flex; justify-content: space-between; align-items: center; font: 400 12.5px/1.4 var(--font-mono); }
+.d-target b { font-weight: 400; display: flex; align-items: center; gap: 10px; }
+.d-target b::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #2BC6A0; }
+.d-target span { font-family: var(--font-body); color: #5A6B85; font-size: 12px; }
+.d-toggle { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.d-toggle i { width: 36px; height: 20px; border-radius: 999px; background: #DCE3EE; position: relative; flex: none; }
+.d-toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+.d-toggle.on i { background: #3B6EF5; }
+.d-toggle.on i::after { left: 19px; }
+
+/* firewall */
+.d-rules { padding: 0; overflow: hidden; }
+.d-rule { display: grid; grid-template-columns: 80px minmax(0, 1fr) 156px 126px 48px 24px; gap: 12px; align-items: center; padding: 14px 16px; border-top: 1px solid #E3E8F0; }
+.d-rule:first-child { border-top: 0; }
+.d-rule b { font-weight: 500; display: block; }
+.d-rule small { font-size: 12.5px; color: #5A6B85; }
+.d-rule .tgl { width: 36px; height: 20px; border-radius: 999px; background: #3B6EF5; position: relative; }
+.d-rule .tgl::after { content: ""; position: absolute; top: 3px; left: 19px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+.d-rule.off { color: #8A9BB8; }
+.d-rule.off .tgl { background: #DCE3EE; }
+.d-rule.off .tgl::after { left: 3px; }
+.d-dots { color: #5A6B85; letter-spacing: 1px; }
+.d-portbars { display: grid; gap: 14px; }
+.d-portbars div { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; font-size: 12.5px; }
+.d-portbars i { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: #CBD5E3; display: block; }
+.d-portbars i.open { background: #B7791F; }
+.d-ban { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; padding: 9px 0; }
+.d-ban small { color: #5A6B85; font-size: 12.5px; }
+
+/* vpn */
+.d-peers { padding: 0; overflow: hidden; }
+.d-peer { display: grid; grid-template-columns: 24px 150px 90px minmax(0, 1fr) 80px 70px 24px; gap: 12px; align-items: center; padding: 14px 16px; border-top: 1px solid #E3E8F0; }
+.d-peer:first-child { border-top: 0; }
+.d-peer svg { width: 16px; height: 16px; color: #5A6B85; }
+.d-peer b { font-weight: 500; display: block; }
+.d-peer small { font-size: 12.5px; color: #5A6B85; }
+.d-dns { display: grid; }
+.d-dns div { display: grid; grid-template-columns: 276px 1fr; padding: 8px 2px; border-bottom: 1px solid #E3E8F0; font: 400 12.5px/1.4 var(--font-mono); }
+.d-dns span { color: #5A6B85; }
+.d-input { border: 2px solid #3B6EF5; border-radius: 8px; padding: 9px 12px; font-family: var(--font-mono); }
+.d-qrbox { background: #F6F8FB; border-radius: 8px; padding: 16px; display: grid; justify-items: center; gap: 10px; text-align: center; color: #5A6B85; font-size: 12.5px; }
+.d-qrbox canvas { width: 176px; height: 176px; image-rendering: pixelated; background: #fff; padding: 14px; border-radius: 6px; box-sizing: content-box; }
+
+/* ---------- Config as code ---------- */
+.code-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+.code {
+  background: var(--code-bg); color: var(--code-fg); border-radius: var(--radius);
+  font: 400 0.82rem/1.7 var(--font-mono); overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-width: 0;
+  border: 1px solid #1C2C45;
+}
+.code-h { display: flex; justify-content: space-between; padding: 10px 16px; color: #8A9BB8; border-bottom: 1px solid #1C2C45; font-size: 0.76rem; }
+.code pre { margin: 0; padding: 16px; overflow-x: auto; }
+.c-com { color: #6F82A3; }
+.c-key { color: #9DB6FF; }
+.c-str { color: #7FE0C4; }
+.c-num { color: #F2C47B; }
+.c-sec { color: #F6F8FB; font-weight: 500; }
+.c-ok { color: #2BC6A0; }
+.c-add { color: #7FE0C4; }
+.c-dim { color: #8A9BB8; }
+.c-p { color: #2BC6A0; user-select: none; }
+@media (max-width: 860px) { .code-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Install ---------- */
+.install { background: var(--surface); border-top: 1px solid var(--line); }
+.install-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 48px; align-items: start; }
+.install-copy { display: grid; gap: 18px; }
+.install-copy p { color: var(--muted); }
+.steps { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; font-size: 0.94rem; counter-increment: s; }
+.steps li::before {
+  content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 600 0.78rem/1 var(--font-mono); background: var(--accent-tint); color: var(--accent);
+}
+.steps code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+.picker { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); overflow: hidden; min-width: 0; }
+.picker-row { display: grid; gap: 10px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.picker-row > span { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  font: 500 0.88rem/1 var(--font-body); padding: 10px 13px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg); display: inline-flex; gap: 8px; align-items: baseline;
+}
+.seg button small { font: 400 0.72rem/1 var(--font-mono); color: var(--muted); }
+.seg button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
+.seg button[aria-pressed="true"] small { color: var(--accent); }
+.seg button:disabled { opacity: .45; cursor: default; }
+.picker-out { padding: 20px; display: grid; gap: 16px; }
+.dl-file { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.dl-file .meta { display: grid; gap: 2px; min-width: 0; }
+.dl-file .meta b { font-family: var(--font-mono); font-size: 0.86rem; font-weight: 500; overflow-wrap: anywhere; }
+.dl-file .meta small { color: var(--muted); font-size: 0.8rem; }
+.term {
+  background: var(--code-bg); color: var(--code-fg); border-radius: 8px; border: 1px solid #1C2C45;
+  font: 400 0.82rem/1.75 var(--font-mono); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 12px 12px 12px 16px;
+}
+.term pre { margin: 0; overflow-x: auto; white-space: pre; }
+.term .copy { background: #16263D; color: #F6F8FB; border-color: #2A3F60; }
+.verify { font-size: 0.82rem; color: var(--muted); }
+.verify a { font-weight: 500; }
+@media (max-width: 900px) { .install-grid { grid-template-columns: 1fr; gap: 32px; } }
+
+/* ---------- Footer ---------- */
+.footer { background: var(--hero-bg); color: var(--hero-muted); font-size: 0.9rem; }
+.footer .wrap { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 32px; padding-block: 52px 40px; }
+.footer .brand { margin-bottom: 12px; }
+.footer h6 { margin: 0 0 10px; font: 600 0.8rem/1 var(--font-body); color: var(--hero-fg); }
+.footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.footer a { color: var(--hero-muted); text-decoration: none; }
+.footer a:hover { color: var(--hero-fg); }
+.footer .legal { grid-column: 1 / -1; border-top: 1px solid var(--hero-line); padding-top: 22px; font-size: 0.8rem; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 760px) { .footer .wrap { grid-template-columns: 1fr 1fr; } .footer .wrap > div:first-child { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+
+<!-- Shared icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 48 48">
+      <path d="M39.98 29.81A17 17 0 1 1 39.98 18.19" stroke="#F6F8FB" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <path d="M46 24H29" stroke="#3B6EF5" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <circle cx="24" cy="24" r="5" fill="#3B6EF5"/>
+      <circle cx="17" cy="15.5" r="2.5" fill="#2BC6A0"/>
+      <circle cx="17" cy="32.5" r="2.5" fill="#2BC6A0"/>
+    </symbol>
+    <symbol id="mark-light" viewBox="0 0 48 48">
+      <path d="M39.98 29.81A17 17 0 1 1 39.98 18.19" stroke="#0E1A2B" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <path d="M46 24H29" stroke="#3B6EF5" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <circle cx="24" cy="24" r="5" fill="#3B6EF5"/>
+      <circle cx="17" cy="15.5" r="2.5" fill="#2BC6A0"/>
+      <circle cx="17" cy="32.5" r="2.5" fill="#2BC6A0"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.6 9.6 0 0 1 12 6.84c.85 0 1.7.11 2.5.34 1.91-1.3 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.5 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.5-3.5-8.5s1-5.9 3.5-8.5z"/></g></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h6l4-5h8M13 17h8M9 12l4 5"/><path d="M18 4l3 3-3 3M18 14l3 3-3 3"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></g></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5l7 2.8v5.2c0 4.3-3 7.7-7 9-4-1.3-7-4.7-7-9V6.3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-router" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="13" width="17" height="6.5" rx="1.5"/><path d="M7 16.3h.01M10.5 16.3h.01M8 9.5a6 6 0 0 1 8 0M5.5 7a9.5 9.5 0 0 1 13 0"/></g></symbol>
+    <symbol id="i-tunnel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19V11a8 8 0 0 1 16 0v8"/><path d="M8.5 19v-7a3.5 3.5 0 0 1 7 0v7"/></g></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></g></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M9 9v11"/></g></symbol>
+    <symbol id="i-hist" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4.5l3 2"/></g></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></g></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5h4"/></g></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8" stroke-linecap="round" transform="translate(0,-2)"/></g></symbol>
+  </defs>
+</svg>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Hearthgate home"><svg aria-hidden="true"><use href="#mark"/></svg><span>hearthgate</span></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#dashboard">Dashboard</a>
+      <a href="docs/">Docs</a>
+      <a class="hide-sm" href="https://github.com/krotovic-com/hearthgate">GitHub</a>
+      <a class="btn btn-primary" href="#install">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+<!-- ================= HERO ================= -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="wrap">
+    <div class="hero-copy">
+      <div class="eyebrow">
+        <a class="pill" href="https://github.com/krotovic-com/hearthgate/releases/latest" style="text-decoration:none"><span class="dot"></span><span data-version-label>v1.0.0</span> released</a>
+        <span>MIT · Rust · systemd</span>
+      </div>
+      <h1 id="hero-title">One way in.<br>Everything else <em>stays shut.</em></h1>
+      <p class="sub">Hearthgate is the single gateway between the internet and your home server. Publish the services you choose with automatic certificates. Reach the rest over the built-in WireGuard VPN.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#install"><svg><use href="#i-down"/></svg>Download <span data-version>1.0.0</span></a>
+        <a class="btn btn-ghost-dark" href="docs/"><svg><use href="#i-book"/></svg>Read the guide</a>
+      </div>
+      <div class="oneliner">
+        <code><span class="prompt">$ </span><span id="hero-cmd">curl -fsSL https://github.com/krotovic-com/hearthgate/releases/latest/download/install.sh | sudo sh</span></code>
+        <button class="copy" type="button" data-copy="#hero-cmd">Copy</button>
+      </div>
+      <p class="hero-note">Linux with systemd on x86_64, ARM64 or ARMv7. The script checks the package against <span class="mono">SHA256SUMS</span> before it installs anything.</p>
+    </div>
+
+    <div class="diagram" aria-hidden="true">
+      <svg id="ring" viewBox="0 0 560 470" role="img">
+        <defs>
+          <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#3B6EF5" stop-opacity=".22"/>
+            <stop offset="100%" stop-color="#3B6EF5" stop-opacity="0"/>
+          </radialGradient>
+          <!-- paths for traffic -->
+          <path id="p-in" d="M560 235 H262"/>
+          <path id="p-svc1" d="M218 222 L174 169"/>
+          <path id="p-svc2" d="M218 248 L174 301"/>
+                    <path id="p-b1" d="M545 40 L332 120"/>
+          <path id="p-b2" d="M545 430 L334 352"/>
+          <path id="p-b3" d="M470 470 L290 372"/>
+          <path id="p-b4" d="M470 0 L292 100"/>
+        </defs>
+
+        <circle cx="230" cy="235" r="210" fill="url(#glow)"/>
+
+        <!-- wall: ring with one opening on the right -->
+        <path d="M371.0 286.3 A150 150 0 1 1 371.0 183.7" stroke="#F6F8FB" stroke-width="14" stroke-linecap="round" fill="none"/>
+
+        <!-- route -->
+        <path d="M548 235 H262" stroke="#3B6EF5" stroke-width="14" stroke-linecap="round"/>
+        <circle cx="230" cy="235" r="34" fill="#3B6EF5"/>
+
+        <!-- inner links -->
+        <path d="M218 222 L170 165" stroke="#3B6EF5" stroke-width="2.5" stroke-opacity=".7"/>
+        <path d="M218 248 L170 305" stroke="#3B6EF5" stroke-width="2.5" stroke-opacity=".7"/>
+        <path d="M196 235 L140 235" stroke="#2BC6A0" stroke-width="2.5" stroke-dasharray="4 5"/>
+
+        <!-- services -->
+        <circle cx="170" cy="165" r="12" fill="#2BC6A0"/>
+        <circle cx="170" cy="305" r="12" fill="#2BC6A0"/>
+        <circle cx="130" cy="235" r="12" fill="#2BC6A0"/>
+        <text x="170" y="144" fill="#F6F8FB" font-size="12.5" text-anchor="middle">nextcloud</text>
+        <text x="170" y="334" fill="#F6F8FB" font-size="12.5" text-anchor="middle">jellyfin</text>
+        <text x="130" y="263" fill="#2BC6A0" font-size="11.5" text-anchor="middle">ssh</text>
+        <text x="130" y="277" fill="#8A9BB8" font-size="10" text-anchor="middle">VPN-only</text>
+
+        <!-- route label -->
+        <g transform="translate(400 200)">
+          <rect x="0" y="-15" width="134" height="24" rx="12" fill="#16263D" stroke="#2A3F60"/>
+          <text x="67" y="1.5" fill="#DCE6FF" font-size="11.5" text-anchor="middle">443/tcp → web</text>
+        </g>
+
+        <!-- blocked probes -->
+        <g font-size="10.5" fill="#8A9BB8">
+          <text x="404" y="70">203.0.113.7 → 3389</text>
+          <text x="404" y="84" fill="#5E7090">closed · nothing listens</text>
+          <text x="390" y="410">198.51.100.23 → 22</text>
+          <text x="390" y="424" fill="#5E7090">closed · VPN-only</text>
+        </g>
+        <g stroke="#E5484D" stroke-width="2.2" stroke-linecap="round">
+          <path d="M327 114 l10 10 M337 114 l-10 10"/>
+          <path d="M329 347 l10 10 M339 347 l-10 10"/>
+        </g>
+
+        <!-- moving traffic -->
+        <g id="traffic">
+          <circle opacity="0" r="5" fill="#DCE6FF"><animateMotion dur="2.4s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear"><mpath href="#p-in"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.9;1" dur="2.4s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="5" fill="#DCE6FF"><animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite"><mpath href="#p-in"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.9;1" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="3.5" fill="#DCE6FF"><animateMotion dur="1.2s" begin="2.2s" repeatCount="indefinite"><mpath href="#p-svc1"/></animateMotion><animate attributeName="opacity" values="0;1;0" dur="1.2s" begin="2.2s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="3.5" fill="#DCE6FF"><animateMotion dur="1.2s" begin="2.8s" repeatCount="indefinite"><mpath href="#p-svc2"/></animateMotion><animate attributeName="opacity" values="0;1;0" dur="1.2s" begin="2.8s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="4" fill="#E5484D"><animateMotion dur="3.2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.6;1" calcMode="linear"><mpath href="#p-b1"/></animateMotion><animate attributeName="opacity" values="0;.9;.9;0;0" keyTimes="0;.1;.58;.66;1" dur="3.2s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="4" fill="#E5484D"><animateMotion dur="3.6s" begin="1.4s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.6;1" calcMode="linear"><mpath href="#p-b2"/></animateMotion><animate attributeName="opacity" values="0;.9;.9;0;0" keyTimes="0;.1;.58;.66;1" dur="3.6s" begin="1.4s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="3.5" fill="#E5484D"><animateMotion dur="4s" begin=".6s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.6;1" calcMode="linear"><mpath href="#p-b3"/></animateMotion><animate attributeName="opacity" values="0;.7;.7;0;0" keyTimes="0;.1;.58;.66;1" dur="4s" begin=".6s" repeatCount="indefinite"/></circle>
+          <circle opacity="0" r="3.5" fill="#E5484D"><animateMotion dur="4.4s" begin="2s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.6;1" calcMode="linear"><mpath href="#p-b4"/></animateMotion><animate attributeName="opacity" values="0;.7;.7;0;0" keyTimes="0;.1;.58;.66;1" dur="4.4s" begin="2s" repeatCount="indefinite"/></circle>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<div class="facts">
+  <div class="wrap">
+    <span><b>One static binary</b>, built with musl</span>
+    <span><b>x86_64 · ARM64 · ARMv7</b>, Raspberry Pi included</span>
+    <span><b>.deb · .rpm · .tar.gz</b> with checksums</span>
+    <span><b>nftables</b> firewall, <b>WireGuard</b> VPN</span>
+  </div>
+</div>
+
+<!-- ================= PORT LEDGER ================= -->
+<section class="section" aria-labelledby="closed-title">
+  <div class="wrap ledger-grid">
+    <div class="ledger-copy">
+      <span class="eyebrow">Secure by default</span>
+      <h2 id="closed-title">Closed until you open it.</h2>
+      <p>A fresh install exposes nothing to the internet. Each public port exists because a public interface asked for it, and every other port is dropped by the firewall. Hearthgate can always tell you why.</p>
+      <ul>
+        <li><svg><use href="#i-check"/></svg><span>Ports nobody publishes stay closed, including ones that Docker published with <code>-p</code>.</span></li>
+        <li><svg><use href="#i-check"/></svg><span>Internal services stay reachable over the VPN at <code>name.home.internal</code>.</span></li>
+        <li><svg><use href="#i-check"/></svg><span>The dashboard only answers on your LAN and the VPN. It never gets a public port.</span></li>
+        <li><svg><use href="#i-check"/></svg><span>A firewall change that locks you out undoes itself after 60 seconds.</span></li>
+      </ul>
+    </div>
+
+    <div class="ledger">
+      <div class="ledger-top"><span><b>Ports on this gateway</b> · example home server</span><span class="mono">hearthgate status</span></div>
+      <div class="ledger-scroll">
+        <table>
+          <thead><tr><th>Port</th><th>State</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">443/tcp</td><td><span class="state public"><i></i>Public</span></td><td>Interface <b>web</b>: cloud.example.com, media.example.com<div class="why">Certificate renews in 58 days</div></td></tr>
+            <tr><td class="mono">80/tcp</td><td><span class="state public"><i></i>Public</span></td><td>Redirects to 443 and answers ACME challenges</td></tr>
+            <tr><td class="mono">51820/udp</td><td><span class="state public"><i></i>Public</span></td><td>WireGuard VPN, 4 peers</td></tr>
+            <tr><td class="mono">22/tcp</td><td><span class="state vpn"><i></i>VPN-only</span></td><td><span class="mono">ssh.home.internal</span><div class="why">No public interface, so the internet can't reach it</div></td></tr>
+            <tr><td class="mono">7380/tcp</td><td><span class="state vpn"><i></i>LAN + VPN</span></td><td>Dashboard and admin API</td></tr>
+            <tr><td class="mono">3389/tcp</td><td><span class="state closed"><i></i>Closed</span></td><td>Nothing listens here<div class="why">Blocked 42 requests from 203.0.113.7 today</div></td></tr>
+            <tr><td class="mono">8443/tcp</td><td><span class="state closed"><i></i>Closed</span></td><td>Published by a container, not by an interface</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section id="features" class="section features-wrap" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">What's in 1.0</span>
+      <h2 id="features-title">The reverse proxy, firewall, VPN and container manager, in one service.</h2>
+      <p class="lede">Hearthgate replaces the usual stack of a proxy, a certificate tool, firewall scripts, a VPN server and a container UI. They share one configuration, so they can't disagree about what is open.</p>
+    </div>
+
+    <div class="groups">
+      <div class="group">
+        <div class="group-label"><h3>Expose</h3><p>Publish exactly what you choose, with TLS handled.</p></div>
+        <div class="feat-list">
+          <div class="feat"><h4><svg><use href="#i-globe"/></svg>Public interfaces</h4><p>A domain plus public ports, TCP, UDP or both. Certificates from Let's Encrypt or any ACME CA are issued and renewed automatically, wildcards included through DNS-01.</p><span class="sample">cloud.example.com · 443/tcp · https</span></div>
+          <div class="feat"><h4><svg><use href="#i-split"/></svg>Routes and load balancing</h4><p>Send a port to one or more services by host and path. Round-robin with weights, least connections or source hash, with active health checks.</p><span class="sample">web:443 → app-1, app-2 ×2</span></div>
+          <div class="feat"><h4><svg><use href="#i-lock"/></svg>TLS your way</h4><p>Terminate TLS in Hearthgate, or pass it through untouched by server name on the same port. Upload your own certificates if you prefer.</p></div>
+          <div class="feat"><h4><svg><use href="#i-router"/></svg>Router port forwarding</h4><p>Optionally keeps your router's forwards in line with your public interfaces over UPnP or NAT-PMP, and warns you about double NAT.</p></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-label"><h3>Protect</h3><p>Everything else stays shut, and you can see why.</p></div>
+        <div class="feat-list">
+          <div class="feat"><h4><svg><use href="#i-shield"/></svg>Firewall and blocklists</h4><p>An nftables firewall that closes every port no interface opens. Add your own rules, subscribe to blocklists, block countries and set rate limits per interface.</p></div>
+          <div class="feat"><h4><svg><use href="#i-hist"/></svg>Automatic bans</h4><p>Clients that probe closed ports or fail to log in collect points and get banned for a while. You set the threshold, window and ban time.</p><span class="sample">20 points in 10m → ban 1h</span></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-label"><h3>Reach</h3><p>Get to every service from anywhere, without publishing it.</p></div>
+        <div class="feat-list">
+          <div class="feat"><h4><svg><use href="#i-tunnel"/></svg>Built-in WireGuard VPN</h4><p>Add a phone or laptop by scanning a QR code. Each peer reaches every internal service, or only the few you allow.</p></div>
+          <div class="feat"><h4><svg><use href="#i-pin"/></svg>Internal DNS</h4><p>Services resolve by name over the VPN, so you type <code>nas.home.internal</code> instead of remembering addresses.</p><span class="sample">ssh.home.internal → 10.0.0.5</span></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-label"><h3>Run</h3><p>Manage the house from one place.</p></div>
+        <div class="feat-list">
+          <div class="feat"><h4><svg><use href="#i-box"/></svg>Managed Docker</h4><p>Run containers and Compose stacks from Hearthgate, update them on request and read their logs. Routes reach them without publishing a single host port.</p></div>
+          <div class="feat"><h4><svg><use href="#i-dash"/></svg>Web dashboard</h4><p>Live health and traffic, two-factor login and API tokens. It answers only on your LAN and the VPN.</p></div>
+          <div class="feat"><h4><svg><use href="#i-hist"/></svg>Revisions and rollback</h4><p>Every change is a numbered revision with a diff. Changes apply within a second, without dropping open connections, and roll back just as fast.</p></div>
+          <div class="feat"><h4><svg><use href="#i-term"/></svg>CLI, API and metrics</h4><p>A REST API with an OpenAPI document, a CLI for scripts, and Prometheus metrics. Notifications and backups are built in.</p></div>
+          <div class="feat soon"><h4><svg><use href="#i-spark"/></svg>AI assistant <span class="tag-soon">coming next</span></h4><p>Bring your own provider, such as Claude, Gemini, OpenAI or Ollama, to review rules and troubleshoot services. Suggestions wait for your approval, and logs are redacted before they leave the machine.</p></div>
+          <div class="feat"><h4><svg><use href="#i-bell"/></svg>Notifications</h4><p>Hear about certificate renewals, failing health checks, bans, backups and updates by email or webhook.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= DASHBOARD ================= -->
+<section id="dashboard" class="section" aria-labelledby="dash-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Dashboard</span>
+      <h2 id="dash-title">See what's open, what's healthy and who's knocking.</h2>
+      <p class="lede">Edits go into a draft. You review the diff, then apply it as a new revision.</p>
+    </div>
+
+    <div class="showcase-tabs" role="tablist" aria-label="Dashboard screens">
+      <button class="tab" role="tab" id="tab-overview" aria-selected="true" aria-controls="scr-overview">Overview</button>
+      <button class="tab" role="tab" id="tab-routes" aria-selected="false" aria-controls="scr-routes">Routes</button>
+      <button class="tab" role="tab" id="tab-firewall" aria-selected="false" aria-controls="scr-firewall">Firewall</button>
+      <button class="tab" role="tab" id="tab-vpn" aria-selected="false" aria-controls="scr-vpn">VPN peers</button>
+    </div>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="d-grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></g></symbol>
+        <symbol id="d-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4.5" width="16" height="6" rx="1.5"/><rect x="4" y="13.5" width="16" height="6" rx="1.5"/></g></symbol>
+        <symbol id="d-cube" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l7.5 4.2v8.6L12 20.5l-7.5-4.2V7.7z"/><path d="M4.5 7.7L12 12l7.5-4.3M12 12v8.5"/></g></symbol>
+        <symbol id="d-route" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8.2 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.8"/></g></symbol>
+        <symbol id="d-shield" viewBox="0 0 24 24"><path d="M12 3.5l7 2.8v5.2c0 4.3-3 7.7-7 9-4-1.3-7-4.7-7-9V6.3z M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+        <symbol id="d-wall" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M3.5 9.7h17M3.5 14.3h17M9 5v4.7M15 9.7v4.6M9 14.3V19"/></g></symbol>
+        <symbol id="d-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></g></symbol>
+        <symbol id="d-sliders" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></g></symbol>
+        <symbol id="d-term" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="1.5"/><path d="M7.5 10l2.5 2-2.5 2M12.5 14.5h4"/></g></symbol>
+        <symbol id="d-laptop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="6" width="14" height="9.5" rx="1"/><path d="M3 18.5h18"/></g></symbol>
+      </defs>
+    </svg>
+
+    <div class="window">
+      <div class="window-bar"><i></i><i></i><i></i><span class="addr"><svg width="11" height="11"><use href="#i-lock"/></svg>https://192.168.1.10:7380/</span></div>
+      <div class="stage-scroll" id="stage-scroll">
+        <div class="stage-box" id="stage-box">
+          <div class="stage" id="stage">
+            <div class="d-app">
+              <aside class="d-side">
+                <div class="d-logo"><svg aria-hidden="true"><use href="#mark-light"/></svg><span>hearthgate</span></div>
+                <div class="d-nav" data-nav="overview"><svg><use href="#d-grid"/></svg>Overview</div>
+                <div class="d-nav"><svg><use href="#i-globe"/></svg>Public interfaces</div>
+                <div class="d-nav"><svg><use href="#d-server"/></svg>Services</div>
+                <div class="d-nav"><svg><use href="#d-cube"/></svg>Containers</div>
+                <div class="d-nav" data-nav="routes"><svg><use href="#d-route"/></svg>Routes</div>
+                <div class="d-nav" data-nav="vpn"><svg><use href="#d-shield"/></svg>VPN peers</div>
+                <div class="d-nav" data-nav="firewall"><svg><use href="#d-wall"/></svg>Firewall</div>
+                <div class="d-nav"><svg><use href="#d-clock"/></svg>History</div>
+                <div class="d-nav"><svg><use href="#d-sliders"/></svg>Settings</div>
+                <div class="d-health"><b>Gateway healthy</b><span>Public IP 198.51.100.24<br>VPN wg0 · 3 peers online<br>UPnP on · 4 ports open</span></div>
+              </aside>
+
+              <div class="d-main">
+                <!-- ===== Overview ===== -->
+                <div class="screen" id="scr-overview" role="tabpanel" aria-labelledby="tab-overview">
+                  <div class="d-main" style="padding:0">
+                    <div class="d-head"><div><h5>Overview</h5><p>homeserver · Debian 13 · Hearthgate 1.0.0 · up 12 days</p></div><div class="d-actions"><span class="d-btn">Run health check</span></div></div>
+                    <div class="d-stats">
+                      <div class="d-stat"><small>Public interfaces</small><b>4</b><span>1 needs attention</span></div>
+                      <div class="d-stat"><small>Services</small><b>6</b><span>1 down · 5 running</span></div>
+                      <div class="d-stat"><small>VPN peers</small><b>3 online</b><span>of 5 devices</span></div>
+                      <div class="d-stat"><small>Blocked today</small><b>1,284</b><span>312 more than yesterday</span></div>
+                    </div>
+                    <div class="d-grid">
+                      <div class="d-col">
+                        <div class="d-card">
+                          <h6>Traffic, last 24 hours</h6>
+                          <div class="d-legend"><span><i style="background:#3B6EF5"></i>Allowed requests</span><span><i style="background:#D93B40"></i>Blocked</span></div>
+                          <div class="d-bars" id="d-bars"></div>
+                          <div class="d-axis"><span>13:00</span><span>19:00</span><span>01:00</span><span>07:00</span><span>now</span></div>
+                        </div>
+                        <div class="d-card">
+                          <h6>Recent activity</h6>
+                          <div class="d-activity">
+                            <div><span class="tm">13:21</span><i></i><span>Blocked 42 requests from 203.0.113.7 to port 3389. Nothing listens there.</span></div>
+                            <div><span class="tm">13:20</span><i style="background:#D93B40"></i><span>minecraft exited with code 137 (out of memory).</span></div>
+                            <div><span class="tm">13:02</span><i style="background:#2BC6A0"></i><span>Peer "phone" connected over VPN from 5G.</span></div>
+                            <div><span class="tm">12:30</span><i style="background:#F2A93B"></i><span>home-assistant restarted after failing its health check.</span></div>
+                            <div><span class="tm">11:58</span><i></i><span>UPnP refreshed port 51820/udp on the router.</span></div>
+                            <div><span class="tm">09:15</span><i style="background:#F2A93B"></i><span>Certificate renewal for media.example.com failed: HTTP challenge timed out.</span></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="d-col">
+                        <div class="d-card">
+                          <h6>Needs attention</h6>
+                          <div class="d-attn">
+                            <div><div class="t">minecraft is down <span class="d-badge crit">Down</span></div><p>Out of memory 4 minutes ago. Its memory limit is 1 GB.</p><div class="acts"><span class="d-btn s p">Edit container</span><span class="d-btn s link">Logs</span></div></div>
+                            <div><div class="t">media.example.com certificate <span class="d-badge warn">6 days</span></div><p>Renewal failed. Expires in 6 days.</p><div class="acts"><span class="d-btn s">Fix renewal</span></div></div>
+                            <div><div class="t">home-assistant restarted 3× <span class="d-badge warn">Unstable</span></div><p>Restarted at 08:12, 10:47 and 12:30 today.</p><div class="acts"><span class="d-btn s link">View service</span></div></div>
+                          </div>
+                        </div>
+                        <div class="d-card">
+                          <h6>Gateway</h6>
+                          <dl class="d-kv" style="margin:0">
+                            <dt>Public IP</dt><dd>198.51.100.24 (stable 9 days)</dd>
+                            <dt>Router</dt><dd>FRITZ!Box 7590 · UPnP allowed</dd>
+                            <dt>Open on router</dt><dd>443, 80, 25565/tcp · 51820/udp</dd>
+                            <dt>VPN</dt><dd>wg0 · 10.8.0.0/24</dd>
+                            <dt>Internal DNS</dt><dd>home.internal · 9 names</dd>
+                            <dt>Docker</dt><dd>27.3 · 6 containers</dd>
+                            <dt>Host load</dt><dd>CPU 18% · RAM 6.6/16 GB</dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ===== Routes ===== -->
+                <div class="screen" id="scr-routes" role="tabpanel" aria-labelledby="tab-routes" hidden>
+                  <div class="d-main" style="padding:0">
+                    <div class="d-head"><div><h5>Routes</h5><p>Connect public interfaces to services. A route with two or more targets is load-balanced.</p></div><div class="d-actions"><span class="d-btn p">New route</span></div></div>
+                    <div class="d-grid">
+                      <div class="d-card">
+                        <div class="d-map">
+                          <svg class="lines" aria-hidden="true">
+                            <path d="M240 64 H416" stroke="#CBD5E3" stroke-width="1.5" fill="none"/>
+                            <path d="M240 164 C330 164 330 144 416 144" stroke="#3B6EF5" stroke-width="2" fill="none"/>
+                            <path d="M240 164 C330 164 330 224 416 224" stroke="#3B6EF5" stroke-width="2" fill="none"/>
+                            <path d="M240 264 C330 264 330 304 416 304" stroke="#CBD5E3" stroke-width="1.5" fill="none"/>
+                            <path d="M240 364 C330 364 330 384 416 384" stroke="#D93B40" stroke-width="1.5" stroke-dasharray="5 4" fill="none"/>
+                            <g fill="#3B6EF5"><circle cx="240" cy="64" r="3"/><circle cx="416" cy="64" r="3"/><circle cx="240" cy="164" r="3"/><circle cx="416" cy="144" r="3"/><circle cx="416" cy="224" r="3"/><circle cx="240" cy="264" r="3"/><circle cx="416" cy="304" r="3"/><circle cx="240" cy="364" r="3"/><circle cx="416" cy="384" r="3"/></g>
+                          </svg>
+                          <span class="d-label" style="left:0;top:0">Public interfaces</span>
+                          <span class="d-label" style="right:0;top:0">Services</span>
+                          <div class="d-node" style="left:0;top:32px"><svg><use href="#i-globe"/></svg><div><b>cloud.example.com</b><span>443/tcp</span></div></div>
+                          <div class="d-node sel" style="left:0;top:132px"><svg><use href="#i-globe"/></svg><div><b>media.example.com</b><span>443/tcp</span></div></div>
+                          <div class="d-node" style="left:0;top:232px"><svg><use href="#i-globe"/></svg><div><b>vpn.example.com</b><span>51820/udp</span></div></div>
+                          <div class="d-node" style="left:0;top:332px"><svg><use href="#i-globe"/></svg><div><b>mc.example.com</b><span>25565/tcp</span></div></div>
+                          <span class="d-pilltag" style="left:264px;top:144px">Round robin · 2 targets</span>
+                          <div class="d-node" style="left:416px;top:32px"><svg><use href="#d-cube"/></svg><div><b>nextcloud</b><span>nextcloud:8080</span></div></div>
+                          <div class="d-node sel2" style="left:416px;top:112px"><svg><use href="#d-cube"/></svg><div><b>jellyfin-1</b><span>jellyfin-1:8096</span></div></div>
+                          <div class="d-node sel2" style="left:416px;top:192px"><svg><use href="#d-cube"/></svg><div><b>jellyfin-2</b><span>jellyfin-2:8096</span></div></div>
+                          <div class="d-node" style="left:416px;top:272px"><svg><use href="#d-shield"/></svg><div><b>Built-in VPN</b><span>wg0 · 10.8.0.1/24</span></div></div>
+                          <div class="d-node down" style="left:416px;top:352px"><svg><use href="#d-cube"/></svg><div><b>minecraft</b><span>minecraft:25565 · down</span></div></div>
+                          <span class="d-label" style="left:416px;top:458px">VPN only · no public route</span>
+                          <div class="d-node ghost" style="left:416px;top:482px"><svg><use href="#d-cube"/></svg><div><b>vaultwarden</b><span>vault.home.internal</span></div></div>
+                          <div class="d-node ghost" style="left:416px;top:554px"><svg><use href="#d-term"/></svg><div><b>ssh</b><span>ssh.home.internal</span></div></div>
+                          <div class="d-node ghost" style="left:416px;top:626px"><svg><use href="#d-term"/></svg><div><b>home-assistant</b><span>ha.home.internal</span></div></div>
+                          <div class="d-keys"><span><i style="color:#CBD5E3"></i>Route</span><span><i style="color:#3B6EF5"></i>Selected route</span><span><i style="color:#D93B40"></i>Target down</span></div>
+                        </div>
+                      </div>
+                      <div class="d-card">
+                        <h6 style="margin-bottom:4px">Edit route</h6>
+                        <div class="d-mono d-muted" style="font-size:12px">media.example.com:443/tcp → jellyfin</div>
+                        <div class="d-form">
+                          <label>Public interface</label><div class="d-select">media.example.com</div>
+                          <label>Public port</label><div class="d-select">443/tcp · HTTPS</div>
+                          <label>Targets</label>
+                          <div class="d-target"><b>jellyfin-1:8096</b><span>weight 50%</span></div>
+                          <div class="d-target"><b>jellyfin-2:8096</b><span>weight 50%</span></div>
+                          <span style="font-size:12.5px;padding-left:12px">+ Add target</span>
+                          <label>Load balancing</label><div class="d-select">Round robin</div>
+                          <label>Health check</label><div class="d-select">HTTP GET /health every 10 s</div>
+                          <div class="d-toggle" style="margin-top:16px"><i></i>Sticky sessions</div>
+                          <div class="d-toggle on"><i></i>Forward client IP (X-Forwarded-For)</div>
+                          <div class="d-toggle"><i></i>Allow only VPN peers</div>
+                          <div class="d-actions" style="margin-top:20px"><span class="d-btn p">Save route</span><span class="d-btn link">Cancel</span><span class="d-btn danger">Delete</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ===== Firewall ===== -->
+                <div class="screen" id="scr-firewall" role="tabpanel" aria-labelledby="tab-firewall" hidden>
+                  <div class="d-main" style="padding:0">
+                    <div class="d-head"><div><h5>Firewall</h5><p>Every port is closed unless a public interface opens it. These rules filter the traffic that reaches an open port.</p></div><div class="d-actions"><span class="d-btn">Blocklists</span><span class="d-btn p">Add rule</span></div></div>
+                    <div class="d-stats">
+                      <div class="d-stat"><small>Default policy</small><b>Deny all</b><span>5 ports open on 4 interfaces</span></div>
+                      <div class="d-stat"><small>Blocked today</small><b>1,284</b><span>1,021 by blocklists</span></div>
+                      <div class="d-stat"><small>Blocklists</small><b>3</b><span>112,408 addresses · updated 06:00</span></div>
+                      <div class="d-stat"><small>Banned now</small><b>7</b><span>Auto-ban after 10 failed logins</span></div>
+                    </div>
+                    <div class="d-grid">
+                      <div style="display:grid;gap:12px">
+                        <span class="d-label">Rules · checked top to bottom</span>
+                        <div class="d-card d-rules">
+                          <div class="d-rule"><span class="d-badge crit">Block</span><div><b>Block known scanners</b><small>Source in FireHOL level 1, Spamhaus DROP or Tor exit list</small></div><span>All interfaces</span><span class="d-mono">1,021 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule"><span class="d-badge crit">Block</span><div><b>Auto-ban repeated failed logins</b><small>10 failed logins in 5 min → ban for 24 h</small></div><span>All HTTPS</span><span class="d-mono">7 banned</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule"><span class="d-badge ok">Allow</span><div><b>EU countries only</b><small>Source country in EU, everything else dropped</small></div><span>media.example.com</span><span class="d-mono">840 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule"><span class="d-badge limit">Limit</span><div><b>Rate limit</b><small>100 requests per minute per address</small></div><span>cloud.example.com</span><span class="d-mono">312 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule"><span class="d-badge limit">Limit</span><div><b>Connection limit</b><small>20 new connections per minute per address</small></div><span>mc.example.com</span><span class="d-mono">36 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule"><span class="d-badge ok">Allow</span><div><b>WireGuard handshakes only</b><small>Drop UDP packets that are not WireGuard</small></div><span>vpn.example.com</span><span class="d-mono">96 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                          <div class="d-rule off"><span class="d-badge crit" style="opacity:.6">Block</span><div><b style="font-weight:400">Block outgoing SMTP from containers</b><small style="color:#8A9BB8">Destination port 25 from the Docker network</small></div><span>Outgoing</span><span class="d-mono">0 today</span><span class="tgl"></span><span class="d-dots">•••</span></div>
+                        </div>
+                        <span class="d-muted" style="font-size:12.5px">Ports with no public interface never reach these rules. They are dropped first.</span>
+                      </div>
+                      <div class="d-col">
+                        <div class="d-card">
+                          <h6>Blocked today, by port</h6>
+                          <div class="d-portbars">
+                            <div><span><span class="d-mono">3389/tcp</span> <span class="d-muted">not open</span></span><span class="d-mono">412</span><i style="width:100%"></i></div>
+                            <div><span><span class="d-mono">22/tcp</span> <span class="d-muted">not open</span></span><span class="d-mono">318</span><i style="width:77%"></i></div>
+                            <div><span><span class="d-mono">443/tcp</span> <span class="d-muted">open port</span></span><span class="d-mono">244</span><i class="open" style="width:59%"></i></div>
+                            <div><span><span class="d-mono">23/tcp</span> <span class="d-muted">not open</span></span><span class="d-mono">131</span><i style="width:32%"></i></div>
+                            <div><span><span class="d-mono">25565/tcp</span> <span class="d-muted">open port</span></span><span class="d-mono">36</span><i class="open" style="width:9%"></i></div>
+                            <div><span class="d-mono">other</span><span class="d-mono">143</span><i style="width:35%"></i></div>
+                          </div>
+                        </div>
+                        <div class="d-card">
+                          <h6>Banned now</h6>
+                          <div class="note">Banned automatically for 24 hours.</div>
+                          <div class="d-ban"><span class="d-mono">203.0.113.7</span><span>Unban</span><small>Port scan · 42 ports · 23 h left</small></div>
+                          <div class="d-ban"><span class="d-mono">198.51.100.200</span><span>Unban</span><small>12 failed logins on vault · 19 h left</small></div>
+                          <div class="d-ban"><span class="d-mono">192.0.2.55</span><span>Unban</span><small>12 failed logins on cloud · 4 h left</small></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ===== VPN peers ===== -->
+                <div class="screen" id="scr-vpn" role="tabpanel" aria-labelledby="tab-vpn" hidden>
+                  <div class="d-main" style="padding:0">
+                    <div class="d-head"><div><h5>VPN peers</h5><p>Devices that can reach your internal services over WireGuard, including ones that are not public. Names resolve through the internal DNS.</p></div><div class="d-actions"><span class="d-btn">DNS names</span><span class="d-btn p">Add device</span></div></div>
+                    <div class="d-stats">
+                      <div class="d-stat"><small>Online</small><b>3</b><span>of 5 devices</span></div>
+                      <div class="d-stat"><small>Network</small><b>10.8.0.0/24</b><span>wg0 · 51820/udp via vpn.example.com</span></div>
+                      <div class="d-stat"><small>Transfer today</small><b>4.2 GB</b><span>Mostly jellyfin to the iPad</span></div>
+                      <div class="d-stat"><small>DNS names</small><b>9</b><span>*.home.internal</span></div>
+                    </div>
+                    <div class="d-grid">
+                      <div class="d-col">
+                        <div class="d-card d-peers">
+                          <div class="d-peer"><svg><use href="#d-laptop"/></svg><div><b>Phone</b><small>iPhone · added 3 Nov</small></div><span class="d-mono">10.8.0.2</span><div><span>All services</span><br><small class="d-mono">↓ 1.2 GB  ↑ 80 MB today</small></div><small>12 s ago</small><span class="d-badge ok">Online</span><span class="d-dots">•••</span></div>
+                          <div class="d-peer"><svg><use href="#d-laptop"/></svg><div><b>ThinkPad</b><small>Linux laptop · added 3 Nov</small></div><span class="d-mono">10.8.0.3</span><div><span>All services</span><br><small class="d-mono">↓ 310 MB  ↑ 1.1 GB today</small></div><small>40 s ago</small><span class="d-badge ok">Online</span><span class="d-dots">•••</span></div>
+                          <div class="d-peer"><svg><use href="#d-laptop"/></svg><div><b>Work laptop</b><small>macOS · added 12 Nov</small></div><span class="d-mono">10.8.0.4</span><div><span>Only ssh and vaultwarden</span><br><small class="d-mono">↓ 4 MB  ↑ 1 MB today</small></div><small>1 min ago</small><span class="d-badge ok">Online</span><span class="d-dots">•••</span></div>
+                          <div class="d-peer"><svg><use href="#d-laptop"/></svg><div><b>iPad</b><small>iPadOS · added 5 Nov</small></div><span class="d-mono">10.8.0.5</span><div><span>jellyfin only</span><br><small class="d-mono">↓ 2.6 GB yesterday</small></div><small>14 h ago</small><span class="d-badge off">Offline</span><span class="d-dots">•••</span></div>
+                          <div class="d-peer"><svg><use href="#d-laptop"/></svg><div><b>Parents' NAS</b><small>Site-to-site · 192.168.20.0/24</small></div><span class="d-mono">10.8.0.6</span><div><span>nextcloud only</span><br><small class="d-mono">No traffic this week</small></div><small>3 days ago</small><span class="d-badge off">Offline</span><span class="d-dots">•••</span></div>
+                        </div>
+                        <div class="d-card">
+                          <h6>Internal DNS</h6>
+                          <div class="note">Answers only on the VPN. Every service gets a name automatically; you can add your own.</div>
+                          <div class="d-dns">
+                            <div>nextcloud.home.internal<span>10.8.0.1 → nextcloud:8080</span></div>
+                            <div>jellyfin.home.internal<span>10.8.0.1 → jellyfin (2 targets)</span></div>
+                            <div>vault.home.internal<span>10.8.0.1 → vaultwarden:80</span></div>
+                            <div>ssh.home.internal<span>10.8.0.1 → 127.0.0.1:22</span></div>
+                            <div>nas.parents.home.internal<span>10.8.0.6 (custom record)</span></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="d-card">
+                        <h6>Add a device</h6>
+                        <div class="note">Scan the code with the WireGuard app, or download the config file.</div>
+                        <div class="d-form">
+                          <label style="margin-top:0">Device name</label><div class="d-input">Kitchen tablet</div>
+                          <span class="d-muted" style="font-size:12.5px">Gets address 10.8.0.7 and the name kitchen-tablet.vpn.home.internal.</span>
+                          <label>Can reach</label><div class="d-select">Only home-assistant</div>
+                          <div class="d-qrbox" style="margin-top:16px"><canvas id="qr" width="25" height="25" aria-label="Example QR code"></canvas><span>The code contains a private key. It is shown once and expires in 10 minutes.</span></div>
+                          <div class="d-actions" style="margin-top:16px"><span class="d-btn p">Create device</span><span class="d-btn">Download .conf</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="showcase-note">Example data, shown at the size of the Figma designs.</p>
+  </div>
+</section>
+
+<!-- ================= CONFIG AS CODE ================= -->
+<section class="section" style="padding-top:0" aria-labelledby="code-title">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Or describe it in a file</span>
+      <h2 id="code-title">Your whole gateway in one TOML file.</h2>
+      <p class="lede">Validate it, apply it, and get a revision you can diff and roll back. The dashboard and the file are two views of the same state.</p>
+    </div>
+    <div class="code-grid">
+      <div class="code">
+        <div class="code-h"><span>state.toml</span><span>excerpt</span></div>
+<pre><span class="c-sec">[[interfaces]]</span>
+<span class="c-key">name</span> = <span class="c-str">"web"</span>
+<span class="c-key">domains</span> = [<span class="c-str">"app.example.com"</span>]
+<span class="c-key">listeners</span> = [
+  { <span class="c-key">port</span> = <span class="c-num">80</span>,  <span class="c-key">mode</span> = <span class="c-str">"http"</span> },
+  { <span class="c-key">port</span> = <span class="c-num">443</span>, <span class="c-key">mode</span> = <span class="c-str">"https"</span> },
+]
+
+<span class="c-sec">[[services]]</span>
+<span class="c-key">name</span> = <span class="c-str">"app-1"</span>
+<span class="c-key">kind</span> = <span class="c-str">"external"</span>
+<span class="c-key">host</span> = <span class="c-str">"10.0.0.11"</span>
+<span class="c-key">ports</span> = { <span class="c-key">http</span> = <span class="c-num">8080</span> }
+<span class="c-key">health</span> = { <span class="c-key">type</span> = <span class="c-str">"http"</span>, <span class="c-key">path</span> = <span class="c-str">"/healthz"</span> }
+
+<span class="c-sec">[[routes]]</span>
+<span class="c-key">name</span> = <span class="c-str">"app"</span>
+<span class="c-key">interface</span> = <span class="c-str">"web"</span>
+<span class="c-key">listener</span> = <span class="c-num">443</span>
+<span class="c-key">strategy</span> = <span class="c-str">"round-robin"</span>
+<span class="c-key">targets</span> = [
+  { <span class="c-key">service</span> = <span class="c-str">"app-1"</span>, <span class="c-key">port</span> = <span class="c-str">"http"</span> },
+  { <span class="c-key">service</span> = <span class="c-str">"app-2"</span>, <span class="c-key">port</span> = <span class="c-str">"http"</span>, <span class="c-key">weight</span> = <span class="c-num">2</span> },
+]</pre>
+      </div>
+      <div class="code">
+        <div class="code-h"><span>terminal</span><span>hearthgate 1.0.0</span></div>
+<pre><span class="c-p">$ </span>hearthgate validate state.toml
+<span class="c-ok">ok</span> <span class="c-dim">3 interfaces, 5 services, 4 routes</span>
+
+<span class="c-p">$ </span>hearthgate apply state.toml -m "load-balance app"
+<span class="c-dim">revision 43 (was 42)</span>
+<span class="c-add">+ route app: target app-2 weight 2</span>
+<span class="c-add">+ service app-2 (10.0.0.12:8080)</span>
+<span class="c-ok">applied in 0.4 s</span><span class="c-dim">, no connections dropped</span>
+
+<span class="c-p">$ </span>hearthgate revisions
+<span class="c-dim">  43  load-balance app       just now</span>
+<span class="c-dim">  42  route media            2 hours ago</span>
+<span class="c-dim">  41  add jellyfin           yesterday</span>
+
+<span class="c-p">$ </span>hearthgate rollback 42
+<span class="c-dim">revision 44 has the content of 42</span>
+<span class="c-ok">applied in 0.3 s</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= INSTALL ================= -->
+<section id="install" class="section install" aria-labelledby="install-title">
+  <div class="wrap install-grid">
+    <div class="install-copy">
+      <span class="eyebrow">Download</span>
+      <h2 id="install-title">Install Hearthgate <span data-version>1.0.0</span></h2>
+      <p>Runs on Debian, Ubuntu, Fedora, RHEL, openSUSE and any other Linux with systemd. The binaries are static, so the archive works on any distribution.</p>
+      <ol class="steps">
+        <li><span>Install with the script or a package for your system.</span></li>
+        <li><span>Print the setup code with <code>sudo -u hearthgate hearthgate setup-code</code>.</span></li>
+        <li><span>Open <code>https://SERVER-LAN-ADDRESS:7380/</code> from your network and create the admin account.</span></li>
+      </ol>
+      <p style="font-size:.9rem">Prefer to build it yourself? <a href="https://github.com/krotovic-com/hearthgate#build-from-source">Build from source</a> with <code>cargo build --release</code>.</p>
+    </div>
+
+    <div class="picker">
+      <div class="picker-row">
+        <span id="lbl-method">How to install</span>
+        <div class="seg" role="group" aria-labelledby="lbl-method" id="seg-method">
+          <button type="button" data-method="script" aria-pressed="true">Install script <small>any distro</small></button>
+          <button type="button" data-method="deb" aria-pressed="false">.deb <small>Debian, Ubuntu</small></button>
+          <button type="button" data-method="rpm" aria-pressed="false">.rpm <small>Fedora, RHEL</small></button>
+          <button type="button" data-method="tar" aria-pressed="false">Archive <small>.tar.gz</small></button>
+        </div>
+      </div>
+      <div class="picker-row" id="row-arch">
+        <span id="lbl-arch">Architecture</span>
+        <div class="seg" role="group" aria-labelledby="lbl-arch" id="seg-arch">
+          <button type="button" data-arch="x86_64" aria-pressed="true">x86_64 <small>most PCs</small></button>
+          <button type="button" data-arch="aarch64" aria-pressed="false">ARM64 <small>Pi 4/5</small></button>
+          <button type="button" data-arch="armv7" aria-pressed="false">ARMv7 <small>Pi 2/3, 32-bit</small></button>
+        </div>
+      </div>
+      <div class="picker-out" aria-live="polite">
+        <div class="dl-file" id="dl-file">
+          <div class="meta"><b id="dl-name">install.sh</b><small id="dl-desc">Detects your system and architecture</small></div>
+          <a class="btn btn-primary" id="dl-link" href="https://github.com/krotovic-com/hearthgate/releases/latest/download/install.sh"><svg><use href="#i-down"/></svg><span id="dl-label">Download</span></a>
+        </div>
+        <div class="term"><pre id="dl-cmd"></pre><button class="copy" type="button" data-copy="#dl-cmd">Copy</button></div>
+        <p class="verify">Every file is listed in <a href="https://github.com/krotovic-com/hearthgate/releases/latest/download/SHA256SUMS">SHA256SUMS</a>. Check yours with <code>sha256sum -c --ignore-missing SHA256SUMS</code>. All files are on the <a href="https://github.com/krotovic-com/hearthgate/releases/latest">releases page</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="#top"><svg aria-hidden="true"><use href="#mark"/></svg><span>hearthgate</span></a>
+      <p>Expose what you choose. Reach the rest over VPN.</p>
+    </div>
+    <div><h6>Product</h6><ul><li><a href="#features">Features</a></li><li><a href="#dashboard">Dashboard</a></li><li><a href="#install">Download</a></li><li><a href="docs/ROADMAP.html">Roadmap</a></li></ul></div>
+    <div><h6>Docs</h6><ul><li><a href="docs/">User guide</a></li><li><a href="docs/THREAT_MODEL.html">Threat model</a></li><li><a href="https://github.com/krotovic-com/hearthgate/blob/main/SECURITY.md">Report a vulnerability</a></li></ul></div>
+    <div><h6>Project</h6><ul><li><a href="https://github.com/krotovic-com/hearthgate">GitHub</a></li><li><a href="https://github.com/krotovic-com/hearthgate/releases">Releases</a></li><li><a href="https://github.com/krotovic-com/hearthgate/blob/main/CONTRIBUTING.md">Contributing</a></li></ul></div>
+    <div class="legal"><span>Hearthgate is open source under the MIT license.</span><span class="mono">hearthgate.service</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var REPO = "https://github.com/krotovic-com/hearthgate";
+  var version = "1.0.0";
+  var ARCH = {
+    x86_64:  { target: "x86_64-unknown-linux-musl",       deb: "amd64", rpm: "x86_64" },
+    aarch64: { target: "aarch64-unknown-linux-musl",      deb: "arm64", rpm: "aarch64" },
+    armv7:   { target: "armv7-unknown-linux-musleabihf",  deb: "armhf", rpm: "armv7hl" }
+  };
+  var state = { method: "script", arch: "x86_64" };
+
+  function files() {
+    var a = ARCH[state.arch], v = version, base = REPO + "/releases/download/v" + v + "/";
+    switch (state.method) {
+      case "deb": var d = "hearthgate_" + v + "_" + a.deb + ".deb";
+        return { name: d, desc: "Debian, Ubuntu and derivatives", url: base + d,
+          cmd: "sudo apt install ./" + d + "\nsudo systemctl enable --now hearthgate" };
+      case "rpm": var r = "hearthgate-" + v + "-1." + a.rpm + ".rpm";
+        return { name: r, desc: "Fedora, RHEL, openSUSE", url: base + r,
+          cmd: "sudo dnf install ./" + r + "\nsudo systemctl enable --now hearthgate" };
+      case "tar": var t = "hearthgate-v" + v + "-" + a.target + ".tar.gz";
+        return { name: t, desc: "Static binary and systemd unit", url: base + t,
+          cmd: "tar -xzf " + t + "\n# then follow the manual install: hearthgate.dev/docs/install.html" };
+      default:
+        return { name: "install.sh", desc: "Detects your distribution and architecture", url: REPO + "/releases/latest/download/install.sh",
+          cmd: "curl -fsSL " + REPO + "/releases/latest/download/install.sh | sudo sh" };
+    }
+  }
+  function render() {
+    var f = files();
+    document.getElementById("dl-name").textContent = f.name;
+    document.getElementById("dl-desc").textContent = f.desc;
+    document.getElementById("dl-link").href = f.url;
+    document.getElementById("dl-label").textContent = state.method === "script" ? "Download script" : "Download";
+    document.getElementById("dl-cmd").textContent = f.cmd;
+    document.querySelectorAll("#seg-method button").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.method === state.method)); });
+    document.querySelectorAll("#seg-arch button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.arch === state.arch));
+      b.disabled = state.method === "script";
+    });
+  }
+  document.getElementById("seg-method").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return; state.method = b.dataset.method; render();
+  });
+  document.getElementById("seg-arch").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b || b.disabled) return; state.arch = b.dataset.arch; render();
+  });
+
+  // Guess the architecture from the browser, when it tells us.
+  try {
+    var ua = (navigator.userAgent || "").toLowerCase();
+    if (/aarch64|arm64/.test(ua)) state.arch = "aarch64";
+    else if (/armv7|armv8l/.test(ua)) state.arch = "armv7";
+  } catch (e) {}
+  render();
+
+  // Copy buttons
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var el = document.querySelector(btn.dataset.copy); if (!el) return;
+      var text = el.textContent;
+      function done(label) { btn.textContent = label; setTimeout(function () { btn.textContent = "Copy"; }, 1600); }
+      function fallback() {
+        var r = document.createRange(); r.selectNodeContents(el);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); done("Selected");
+      }
+      try { navigator.clipboard.writeText(text).then(function () { done("Copied"); }, fallback); } catch (e) { fallback(); }
+    });
+  });
+
+  // Dashboard tabs, scaled from the 1440 px Figma frame to fit the page
+  var tabs = document.querySelectorAll(".tab");
+  var stage = document.getElementById("stage"), box = document.getElementById("stage-box"), scroller = document.getElementById("stage-scroll");
+  function fit() {
+    var w = scroller.clientWidth, s = Math.max(w / 1440, 0.62);
+    stage.style.transform = "scale(" + s + ")";
+    box.style.width = (1440 * s) + "px";
+    box.style.height = (stage.offsetHeight * s) + "px";
+  }
+  function show(name) {
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", String(t.id === "tab-" + name)); });
+    document.querySelectorAll(".screen").forEach(function (s) { s.hidden = s.id !== "scr-" + name; });
+    document.querySelectorAll(".d-nav").forEach(function (a) { a.classList.toggle("on", a.dataset.nav === name); });
+    fit();
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function () { show(t.id.slice(4)); }); });
+  window.addEventListener("resize", fit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
+  // Traffic chart: allowed and blocked requests per hour (example data)
+  var allowed = [16,15,13,10,7,6,5,8,13,24,28,33,36,34,36,39,40,45,56,58,54,42,28,21];
+  var blocked = [3,5,7,8,6,4,3,2,3,3,4,5,5,4,5,7,6,5,6,8,13,10,7,5];
+  var bars = document.getElementById("d-bars");
+  allowed.forEach(function (a, i) {
+    var el = document.createElement("div"); el.className = "d-bar";
+    el.innerHTML = '<div class="a" style="height:' + (a / 66 * 100) + '%"></div><div class="b" style="height:' + (blocked[i] / 66 * 100) + '%"></div>';
+    bars.appendChild(el);
+  });
+
+  // Decorative QR-like pattern (example only, not a real config)
+  var c = document.getElementById("qr"), x = c.getContext("2d"), seed = 11, N = 25;
+  function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+  x.fillStyle = "#fff"; x.fillRect(0, 0, N, N); x.fillStyle = "#0E1A2B";
+  for (var i = 0; i < N; i++) for (var j = 0; j < N; j++) if (rnd() > 0.55) x.fillRect(i, j, 1, 1);
+  [[0,0],[N-7,0],[0,N-7]].forEach(function (p) {
+    x.fillStyle = "#fff"; x.fillRect(p[0]-1 < 0 ? 0 : p[0]-1, p[1], 8, 8);
+    x.fillStyle = "#0E1A2B"; x.fillRect(p[0], p[1], 7, 7);
+    x.fillStyle = "#fff"; x.fillRect(p[0]+1, p[1]+1, 5, 5);
+    x.fillStyle = "#0E1A2B"; x.fillRect(p[0]+2, p[1]+2, 3, 3);
+  });
+  show("overview");
+
+  // Reduced motion: freeze the traffic animation in place.
+  try {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      var svg = document.getElementById("ring"); svg.pauseAnimations(); svg.setCurrentTime(1.6);
+    }
+  } catch (e) {}
+
+  // On the real site, show the latest release version.
+  try {
+    fetch("https://api.github.com/repos/krotovic-com/hearthgate/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.tag_name) return;
+        version = j.tag_name.replace(/^v/, "");
+        document.querySelectorAll("[data-version]").forEach(function (el) { el.textContent = version; });
+        document.querySelectorAll("[data-version-label]").forEach(function (el) { el.textContent = "v" + version; });
+        render();
+      }).catch(function () {});
+  } catch (e) {}
+})();
+</script>
+
+</body>
+</html>

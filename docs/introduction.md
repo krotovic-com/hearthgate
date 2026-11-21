@@ -1,4 +1,4 @@
-<img src="brand/logo-on-light.svg" alt="Hearthgate" width="286" height="48">
+# Hearthgate documentation
 
 Hearthgate is the single, secure entry point from the internet to your home server. It runs as one native Linux service and handles everything between your router and the things you host:
 
@@ -10,4 +10,4 @@ Hearthgate is the single, secure entry point from the internet to your home serv
 - **Dashboard.** A web UI reachable only from your LAN or the VPN, where every change is a reviewed, reversible revision.
 - **Notifications and backups.** Webhooks, ntfy or email when a certificate fails, a service goes down or a backup fails; daily backups that restore on a new machine.
 
-Start with the [install section of the guide](guide.md#install). The source, releases and issue tracker are on [GitHub](https://github.com/krotovic-com/hearthgate). Hearthgate is MIT-licensed.
+Start with [Install](install.md), then [First steps in the dashboard](dashboard.md). [How it fits together](concepts.md) explains the three building blocks: public interfaces, services and routes. The source, releases and issue tracker are on [GitHub](https://github.com/krotovic-com/hearthgate). Hearthgate is MIT-licensed.
