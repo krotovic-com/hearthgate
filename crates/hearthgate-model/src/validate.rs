@@ -82,7 +82,11 @@ impl DesiredState {
         self.validate_settings(&mut c);
         self.validate_names(&mut c);
         for interface in &self.interfaces {
-            validate_interface(interface, &mut c);
+            validate_interface(
+                interface,
+                self.acme.challenge == Some(crate::AcmeChallenge::Dns01),
+                &mut c,
+            );
         }
         self.validate_shared_ports(&mut c);
         for service in &self.services {
@@ -138,6 +142,16 @@ impl DesiredState {
                     "acme.challenge is http-01, but the interface has no http listener to answer it",
                 );
             }
+        }
+        let dns01 = self.acme.challenge == Some(crate::AcmeChallenge::Dns01);
+        if dns01 && self.acme.dns.is_none() {
+            c.push(
+                "acme.dns",
+                "acme.challenge is dns-01, so set a DNS provider in [acme.dns]",
+            );
+        }
+        if let Some(dns) = &self.acme.dns {
+            validate_acme_dns(dns, c);
         }
         if self.interfaces.iter().any(Interface::wants_acme) && !self.acme.accept_terms {
             c.push(
@@ -648,9 +662,77 @@ impl DesiredState {
     }
 }
 
-fn validate_interface(interface: &Interface, c: &mut Collector) {
+fn validate_acme_dns(dns: &crate::AcmeDns, c: &mut Collector) {
+    let need = |c: &mut Collector, field: &str, value: Option<&String>, why: &str| {
+        if value.is_none_or(|v| v.trim().is_empty()) {
+            c.push(format!("acme.dns.{field}"), why.to_owned());
+        }
+    };
+    let file = |c: &mut Collector, field: &str, value: Option<&String>| {
+        if let Some(v) = value
+            && !v.starts_with('/')
+        {
+            c.push(format!("acme.dns.{field}"), "must be an absolute path");
+        }
+    };
+    match dns.provider {
+        crate::DnsProvider::Cloudflare => {
+            need(
+                c,
+                "api_token_file",
+                dns.api_token_file.as_ref(),
+                "Cloudflare needs a file with an API token",
+            );
+            file(c, "api_token_file", dns.api_token_file.as_ref());
+            if let Some(url) = &dns.api_url
+                && !url.starts_with("https://")
+                && !url.starts_with("http://")
+            {
+                c.push("acme.dns.api_url", "must be an http(s) URL");
+            }
+        }
+        crate::DnsProvider::Rfc2136 => {
+            need(
+                c,
+                "server",
+                dns.server.as_ref(),
+                "the DNS server to update is needed",
+            );
+            need(c, "zone", dns.zone.as_ref(), "the zone to update is needed");
+            need(
+                c,
+                "key_name",
+                dns.key_name.as_ref(),
+                "the TSIG key's name is needed",
+            );
+            need(
+                c,
+                "key_file",
+                dns.key_file.as_ref(),
+                "a file with the TSIG secret is needed",
+            );
+            file(c, "key_file", dns.key_file.as_ref());
+            if let Some(zone) = &dns.zone
+                && !is_valid_hostname(&crate::normalize_host(zone), false)
+            {
+                c.push("acme.dns.zone", format!("{zone} is not a domain"));
+            }
+            if let Some(server) = &dns.server
+                && crate::split_endpoint(server).is_none()
+            {
+                c.push("acme.dns.server", "must be host or host:port");
+            }
+        }
+    }
+    if dns.propagation > std::time::Duration::from_secs(3600) {
+        c.push("acme.dns.propagation", "must be at most 1h");
+    }
+}
+
+fn validate_interface(interface: &Interface, dns01: bool, c: &mut Collector) {
     let path = format!("interfaces[{}]", interface.name);
-    let wildcard_ok = interface.certificate.is_some()
+    let wildcard_ok = dns01
+        || interface.certificate.is_some()
         || !interface
             .listeners
             .iter()
@@ -662,8 +744,8 @@ fn validate_interface(interface: &Interface, c: &mut Collector) {
             c.push(
                 &path,
                 format!(
-                    "wildcard domain {domain} needs a manual certificate (automatic wildcard \
-                     certificates need DNS challenges, planned for a later release)"
+                    "wildcard domain {domain} needs a manual certificate, or automatic \
+                     certificates with acme.challenge = \"dns-01\""
                 ),
             );
         }

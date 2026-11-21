@@ -820,8 +820,15 @@ dependencies = [
 name = "hearthgate-acme"
 version = "0.0.0-dev"
 dependencies = [
+ "base64 0.22.1",
+ "bytes",
  "hearthgate-model",
  "hearthgate-proxy",
+ "hickory-proto",
+ "http",
+ "http-body-util",
+ "hyper-rustls",
+ "hyper-util",
  "instant-acme",
  "rcgen",
  "rustls",
@@ -1027,6 +1034,7 @@ version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12b92608f679a6fa515dd1d15c1ff89443026e391200a2c840c7afcba482893d"
 dependencies = [
+ "bitflags",
  "data-encoding",
  "idna",
  "ipnet",
@@ -1034,7 +1042,9 @@ dependencies = [
  "once_cell",
  "rand",
  "ring",
+ "rustls-pki-types",
  "thiserror",
+ "time",
  "tinyvec",
  "tracing",
  "url",

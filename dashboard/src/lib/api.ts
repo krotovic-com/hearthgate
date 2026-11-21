@@ -118,8 +118,25 @@ export interface AcmeSettings {
   staging?: boolean;
   directory?: string | null;
   directory_root?: string | null;
-  challenge?: 'http-01' | 'tls-alpn-01' | null;
+  challenge?: 'http-01' | 'tls-alpn-01' | 'dns-01' | null;
   renew_before?: string;
+  dns?: AcmeDns | null;
+}
+
+export type DnsProvider = 'cloudflare' | 'rfc2136';
+export type TsigAlgorithm = 'hmac-sha256' | 'hmac-sha384' | 'hmac-sha512';
+
+/** Where dns-01 challenges set TXT records. Secrets stay in files. */
+export interface AcmeDns {
+  provider: DnsProvider;
+  api_token_file?: string | null;
+  api_url?: string | null;
+  server?: string | null;
+  zone?: string | null;
+  key_name?: string | null;
+  key_algorithm?: TsigAlgorithm;
+  key_file?: string | null;
+  propagation?: string;
 }
 
 export type RuleAction = 'allow' | 'deny';

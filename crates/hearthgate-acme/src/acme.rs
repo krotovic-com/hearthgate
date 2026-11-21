@@ -3,8 +3,9 @@
 //! The [`Issuer`] keeps one certificate per `https` interface: it issues a
 //! certificate when none exists or the interface's domains changed, and
 //! renews it when less than `acme.renew_before` is left. Challenges are
-//! answered by the running gateway itself: HTTP-01 on `http` listeners and
-//! TLS-ALPN-01 on `https` listeners. Failures back off exponentially, so a
+//! answered by the running gateway itself (HTTP-01 on `http` listeners and
+//! TLS-ALPN-01 on `https` listeners), or with TXT records at a DNS provider
+//! (DNS-01, see [`crate::dns`]). Failures back off exponentially, so a
 //! misconfiguration never hammers the CA's rate limits.
 
 use std::collections::HashMap;
@@ -21,6 +22,7 @@ use instant_acme::{
 };
 use tracing::{info, warn};
 
+use crate::dns::{DnsRecord, DnsSolver, challenge_name};
 use crate::store::{CertError, CertInfo, CertSource, CertStore, create_private_dir, write_atomic};
 
 /// Errors while issuing a certificate.
@@ -239,7 +241,6 @@ impl Issuer {
         settings: &AcmeSettings,
         job: &CertJob,
     ) -> Result<CertInfo, AcmeError> {
-        let account = self.account(settings).await?;
         info!(
             interface = %job.interface,
             "requesting a certificate for {} ({})",
@@ -247,8 +248,46 @@ impl Issuer {
             match job.challenge {
                 AcmeChallenge::Http01 => "http-01",
                 AcmeChallenge::TlsAlpn01 => "tls-alpn-01",
+                AcmeChallenge::Dns01 => "dns-01",
             }
         );
+        let solver = match job.challenge {
+            AcmeChallenge::Dns01 => {
+                Some(DnsSolver::new(settings.dns.as_ref().ok_or_else(|| {
+                    AcmeError::Other("acme.challenge is dns-01, but acme.dns is not set".into())
+                })?))
+            }
+            _ => None,
+        };
+        let mut records = Vec::new();
+        let result = self
+            .order(settings, job, solver.as_ref(), &mut records)
+            .await;
+        // Remove the TXT records however the order ended.
+        if let Some(solver) = &solver {
+            for record in &records {
+                if let Err(e) = solver.remove(record).await {
+                    warn!(interface = %job.interface, "cannot remove the TXT record {}: {e}", record.name);
+                }
+            }
+        }
+        let (chain_pem, key_pem) = result?;
+        Ok(self.store.save(
+            CertSource::Acme,
+            &job.interface,
+            chain_pem.as_bytes(),
+            key_pem.as_bytes(),
+        )?)
+    }
+
+    async fn order(
+        &self,
+        settings: &AcmeSettings,
+        job: &CertJob,
+        solver: Option<&DnsSolver>,
+        records: &mut Vec<DnsRecord>,
+    ) -> Result<(String, String), AcmeError> {
+        let account = self.account(settings).await?;
         let identifiers: Vec<Identifier> = job
             .domains
             .iter()
@@ -264,7 +303,9 @@ impl Issuer {
         let ty = match job.challenge {
             AcmeChallenge::Http01 => ChallengeType::Http01,
             AcmeChallenge::TlsAlpn01 => ChallengeType::TlsAlpn01,
+            AcmeChallenge::Dns01 => ChallengeType::Dns01,
         };
+        let mut ready = Vec::new();
         let mut authorizations = order.authorizations();
         while let Some(authz) = authorizations.next().await {
             let mut authz = authz?;
@@ -290,8 +331,44 @@ impl Issuer {
                     self.certs.set_challenge(&domain, Arc::new(key));
                     cleanup.domains.push(domain);
                 }
+                AcmeChallenge::Dns01 => {
+                    let solver =
+                        solver.ok_or_else(|| AcmeError::Other("no DNS provider".into()))?;
+                    // The identifier of a wildcard authorization is the base
+                    // domain; both share one record name.
+                    let name = challenge_name(&challenge.identifier().to_string());
+                    let record = solver
+                        .set(&name, &key_auth.dns_value())
+                        .await
+                        .map_err(AcmeError::Other)?;
+                    records.push(record);
+                }
             }
-            challenge.set_ready().await?;
+            if job.challenge == AcmeChallenge::Dns01 {
+                // Tell the CA only once every record is set and had time
+                // to reach the provider's servers.
+                ready.push(challenge.url.clone());
+            } else {
+                challenge.set_ready().await?;
+            }
+        }
+        if !ready.is_empty() {
+            let wait = settings
+                .dns
+                .as_ref()
+                .map_or(Duration::ZERO, |d| d.propagation);
+            info!(interface = %job.interface, "TXT records set; waiting {}s for them to propagate", wait.as_secs());
+            tokio::time::sleep(wait).await;
+            let mut authorizations = order.authorizations();
+            while let Some(authz) = authorizations.next().await {
+                let mut authz = authz?;
+                if authz.status != AuthorizationStatus::Pending {
+                    continue;
+                }
+                if let Some(mut challenge) = authz.challenge(ty.clone()) {
+                    challenge.set_ready().await?;
+                }
+            }
         }
         let retry = RetryPolicy::new()
             .initial_delay(Duration::from_millis(500))
@@ -312,12 +389,7 @@ impl Issuer {
         let key_pem = order.finalize().await?;
         let chain_pem = order.poll_certificate(&retry).await?;
         drop(cleanup);
-        Ok(self.store.save(
-            CertSource::Acme,
-            &job.interface,
-            chain_pem.as_bytes(),
-            key_pem.as_bytes(),
-        )?)
+        Ok((chain_pem, key_pem))
     }
 }
 

@@ -69,6 +69,8 @@ cargo test -p hearthgate-acme --test pebble
 
 They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
 
+The DNS-01 test (`cargo test -p hearthgate-acme --test dns01`) also needs BIND (`sudo apt install bind9 bind9-dnsutils`): it starts its own `named` on port 18153, updates it with RFC 2136 and has Pebble issue a wildcard certificate from it, on ports 14010 to 15012. The Cloudflare part runs against a fake API and needs nothing.
+
 ### Docker tests
 
 `crates/hearthgate-docker/tests/docker.rs` creates, recreates and removes real containers and a Compose stack (all named `hgtest-…`), and is skipped when Docker or the `busybox:1.36` image isn't available. It needs the Docker daemon, the Compose plugin and access to `/var/run/docker.sock`: `cargo test -p hearthgate-docker --test docker`.

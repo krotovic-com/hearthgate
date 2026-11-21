@@ -423,3 +423,49 @@ running = false
         "more than once",
     );
 }
+
+#[test]
+fn dns01_is_checked() {
+    let iface = "[[interfaces]]\nname = \"web\"\ndomains = [\"example.com\", \"*.example.com\"]\nlisteners = [{ port = 443, mode = \"https\" }]\n";
+    // Wildcards need dns-01.
+    assert_problem(
+        &format!("[acme]\naccept_terms = true\n{iface}"),
+        "acme.challenge = \"dns-01\"",
+    );
+    assert_problem(
+        &format!("[acme]\naccept_terms = true\nchallenge = \"dns-01\"\n{iface}"),
+        "set a DNS provider",
+    );
+    let cloudflare = format!(
+        "[acme]\naccept_terms = true\nchallenge = \"dns-01\"\n[acme.dns]\nprovider = \"cloudflare\"\napi_token_file = \"/etc/hearthgate/cf\"\n{iface}"
+    );
+    assert!(
+        messages(&cloudflare).is_empty(),
+        "{:?}",
+        messages(&cloudflare)
+    );
+    let state = DesiredState::from_toml(&cloudflare).unwrap();
+    assert_eq!(
+        state.acme.dns.as_ref().unwrap().propagation,
+        std::time::Duration::from_secs(30)
+    );
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"cloudflare\"\napi_token_file = \"cf\"\n",
+        "absolute path",
+    );
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"cloudflare\"\n",
+        "API token",
+    );
+    let rfc = "[acme]\n[acme.dns]\nprovider = \"rfc2136\"\nserver = \"ns.example.com:5353\"\nzone = \"example.com\"\nkey_name = \"hg\"\nkey_file = \"/etc/hearthgate/tsig\"\nkey_algorithm = \"hmac-sha512\"\n";
+    assert!(messages(rfc).is_empty(), "{:?}", messages(rfc));
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"rfc2136\"\n",
+        "zone to update",
+    );
+    assert_problem(
+        &rfc.replace("ns.example.com:5353", "ns:0"),
+        "host or host:port",
+    );
+}
