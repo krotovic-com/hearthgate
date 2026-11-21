@@ -6,6 +6,8 @@
 #   fix: / perf:                  -> patch
 #   type!: or BREAKING CHANGE:    -> major (minor while the version is 0.x)
 #   anything else (chore, docs…)  -> no release
+#   a `Release-As: X.Y.Z` line     -> exactly X.Y.Z, if it is newer (used
+#                                    to leave 0.x for 1.0.0)
 #
 # Prints `version=X.Y.Z`, `tag=vX.Y.Z`, `bump=<level>` and `previous=<tag>`.
 # When nothing is releasable, version/tag/bump are empty. If GITHUB_OUTPUT is
@@ -60,6 +62,20 @@ case "$level" in
   1) version="$major.$minor.$((patch + 1))"; bump="patch" ;;
   *) version=""; bump="" ;;
 esac
+
+# An explicit `Release-As: X.Y.Z` in any commit since the last release wins
+# when it is newer than that release (the highest such version counts).
+release_as="$(git log --no-merges --format='%b' "$range" |
+  sed -nE 's/^Release-As: v?([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' | sort -V | tail -n 1)"
+if [[ -n "$release_as" ]]; then
+  IFS=. read -r ra_major ra_minor ra_patch <<<"$release_as"
+  if ((ra_major > major || (ra_major == major && (ra_minor > minor || (ra_minor == minor && ra_patch > patch))))); then
+    version="$release_as"
+    if ((ra_major > major)); then bump="major"; elif ((ra_minor > minor)); then bump="minor"; else bump="patch"; fi
+  else
+    echo "Ignoring Release-As: $release_as, which is not newer than $base." >&2
+  fi
+fi
 
 out="version=$version
 tag=${version:+v$version}

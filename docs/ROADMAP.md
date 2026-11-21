@@ -1,16 +1,16 @@
 # Hearthgate roadmap
 
-This is the plan for building Hearthgate from the current skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Each phase ends in a release that is useful on its own, so a home server can run Hearthgate from Phase 1 onwards and pick up new features with each upgrade.
+This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Phases 1 and 2 shipped as 0.2 and 0.3; Phases 3 to 6 ship together as 1.0. Phase 7 comes after.
 
-| Phase | Theme | Release | Dashboard screens it lights up |
-|---|---|---|---|
-| 1 | Core gateway: public interfaces, services, routes, TLS | 0.2 | none yet (config file, CLI and API) |
-| 2 | Dashboard and admin access | 0.3 | Overview, Public interfaces, Services, Routes, Settings |
-| 3 | Perimeter: firewall, blocklists, UPnP | 0.4 | Firewall, Settings → Router |
-| 4 | Built-in VPN and internal DNS | 0.5 | VPN peers |
-| 5 | Managed Docker containers and stacks | 0.6 | Services (managed), logs |
-| 6 | Hardening and 1.0 | 1.0 | Dark mode, backups, updates |
-| 7 | Optional AI assistant | 1.1 | AI review, "Review rules with AI" |
+| Phase | Theme | Release | Status | Dashboard screens it lights up |
+|---|---|---|---|---|
+| 1 | Core gateway: public interfaces, services, routes, TLS | 0.2 | Done | none yet (config file, CLI and API) |
+| 2 | Dashboard and admin access | 0.3 | Done | Overview, Public interfaces, Services, Routes, Settings |
+| 3 | Perimeter: firewall, blocklists, UPnP | 1.0 | Done | Firewall, Settings → Router |
+| 4 | Built-in VPN and internal DNS | 1.0 | Done | VPN peers |
+| 5 | Managed Docker containers and stacks | 1.0 | Done | Containers, logs |
+| 6 | Hardening and 1.0 | 1.0 | Done | Dark mode, backups, notifications |
+| 7 | Optional AI assistant | 1.1 | Planned | AI review, "Review rules with AI" |
 
 Phases 3, 4 and 5 depend only on Phase 1 and 2, so their order can be swapped if priorities change. AI is deliberately last: it reviews and explains everything the earlier phases build, so it needs them to exist and be stable.
 
@@ -282,7 +282,7 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 ## Open decisions
 
-These are worth confirming before the phase that needs them. The recommendation is listed first.
+These were confirmed before the phase that needed them; the choice made is listed first.
 
 1. **Dashboard framework (Phase 2).** A TypeScript SPA (Svelte 5 with Vite) embedded in the binary, because it maps directly to the Figma kit and has the widest contributor pool. The alternative is a Rust frontend (Leptos), which keeps one language but has a smaller ecosystem.
 2. **Desired-state storage (Phase 1).** SQLite with revisions, plus TOML import and export. The alternative is TOML as the only source of truth, which is simpler but makes concurrent UI edits, history and AI drafts harder.

@@ -158,7 +158,7 @@ Commit types decide the next version, so pick them carefully:
 | `style` | Formatting only | none |
 | `chore` | Anything else that is not user-facing | none |
 
-Mark breaking changes with `!` after the type (`feat!: drop the v1 config format`) or a `BREAKING CHANGE:` footer that explains the migration. While Hearthgate is `0.x`, a breaking change bumps the minor version.
+Mark breaking changes with `!` after the type (`feat!: drop the v1 config format`) or a `BREAKING CHANGE:` footer that explains the migration. While Hearthgate was `0.x`, a breaking change bumped the minor version; from 1.0 it bumps the major version. A `Release-As: X.Y.Z` footer sets the next version exactly, when it is newer than the last release.
 
 Useful scopes match the main areas: `proxy`, `tls`, `vpn`, `dns`, `firewall`, `upnp`, `docker`, `dashboard`, `ai`, `config`, `cli`, `systemd`.
 

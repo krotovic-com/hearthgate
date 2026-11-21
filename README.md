@@ -15,7 +15,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** early development. The core gateway and its dashboard work: public interfaces, routes to external services and existing Docker containers, load balancing, health checks, automatic certificates, a firewall with blocklists, router port forwarding, a WireGuard VPN with internal DNS, managed Docker containers and Compose stacks, a web dashboard reachable only from your LAN or VPN, a CLI and an admin API. See the [roadmap](docs/ROADMAP.md) for what lands in each release, and the [user guide](docs/guide.md) for how to use what is there.
+> **Status:** 1.0. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. The [user guide](docs/guide.md) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
 
 ## What it does
 
@@ -94,8 +94,9 @@ Hearthgate follows [Semantic Versioning](https://semver.org). Every commit merge
 | `fix: …`, `perf: …` | patch (`0.3.0` → `0.3.1`) |
 | `feat!: …` or a `BREAKING CHANGE:` footer | major (minor while the version is `0.x`) |
 | `chore:`, `docs:`, `ci:`, `refactor:`, `test:`, `style:`, `build:` | no release |
+| a `Release-As: 1.0.0` footer | exactly that version, if it is newer |
 
-When a release is due, the workflow builds every target, tags the commit and publishes a GitHub Release with the archives, checksums and generated release notes.
+When a release is due, the workflow builds every target, tags the commit and publishes a GitHub Release with the archives, `.deb` and `.rpm` packages, the install script, checksums and generated release notes.
 
 ## Contributing
 
