@@ -1,13 +1,15 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import logo from '../logo-on-light.svg';
+  import logoDark from '../logo-on-dark.svg';
 
   let { title, intro, children }: { title: string; intro: string; children: Snippet } = $props();
 </script>
 
 <main class="page">
   <div class="card">
-    <img src={logo} alt="Hearthgate" width="157" height="26" class="logo" />
+    <img src={logo} alt="Hearthgate" width="157" height="26" class="logo on-light" />
+    <img src={logoDark} alt="Hearthgate" width="157" height="26" class="logo on-dark" />
     <div class="heading">
       <h1>{title}</h1>
       <p class="secondary">{intro}</p>
@@ -37,6 +39,12 @@
     height: 26.4px;
     width: auto;
     align-self: flex-start;
+  }
+  .on-light {
+    display: var(--hg-logo-on-light);
+  }
+  .on-dark {
+    display: var(--hg-logo-on-dark);
   }
   .heading {
     display: flex;

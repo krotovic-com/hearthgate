@@ -29,6 +29,71 @@ pub struct Cli {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum FirewallCommand {
+    /// Show whether the firewall is on and whether a change is waiting.
+    Status,
+    /// Keep the firewall change that is waiting. Run it from a new SSH
+    /// session: if that session gets in, the new rules work.
+    Confirm,
+    /// Turn the firewall off (a new revision), for when a change locked
+    /// you out and you are at the console.
+    Off,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum VpnCommand {
+    /// Show the VPN's settings and its peers.
+    Status,
+    /// Turn the VPN on.
+    Enable {
+        /// Host name or address peers connect to, such as
+        /// `vpn.example.com` (default: the first public domain, or the
+        /// router's public address).
+        #[arg(long)]
+        endpoint: Option<String>,
+    },
+    /// Turn the VPN off. Peers are kept.
+    Disable,
+    /// Add a device and print its configuration (and a QR code for phone
+    /// apps). Its private key is shown only this once.
+    Add {
+        name: String,
+        /// `all`, or the services it may reach, separated by commas.
+        #[arg(long, default_value = "all")]
+        access: String,
+        /// Its VPN address (default: the next free one).
+        #[arg(long)]
+        address: Option<std::net::Ipv4Addr>,
+        /// Write the configuration to this file instead of printing it.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Don't print a QR code.
+        #[arg(long)]
+        no_qr: bool,
+    },
+    /// Remove a device. It can't connect any more.
+    Remove { name: String },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DockerCommand {
+    /// Show managed containers and stacks.
+    Status,
+    /// Print a managed container's recent output.
+    Logs {
+        name: String,
+        /// How many lines.
+        #[arg(short = 'n', long, default_value_t = 100)]
+        tail: usize,
+    },
+    /// Pull the newest image of a managed container or stack and recreate
+    /// it if the image changed.
+    Update { name: String },
+    /// Check whether newer images exist, without changing anything.
+    CheckUpdates,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the gateway (what the systemd service starts).
     Run,
@@ -89,6 +154,26 @@ pub enum Command {
         #[arg(long)]
         reset: bool,
     },
+    /// Firewall: show its state, confirm a change, or turn it off.
+    Firewall {
+        #[command(subcommand)]
+        action: FirewallCommand,
+    },
+    /// VPN: show it, turn it on or off, add or remove devices.
+    Vpn {
+        #[command(subcommand)]
+        action: VpnCommand,
+    },
+    /// Managed Docker containers and stacks.
+    Docker {
+        #[command(subcommand)]
+        action: DockerCommand,
+    },
+    /// Back up the state, certificates and keys, or restore a backup.
+    Backup {
+        #[command(subcommand)]
+        action: BackupCommand,
+    },
     /// Print the admin API's OpenAPI document.
     Openapi,
     /// Manage manually uploaded certificates.
@@ -101,6 +186,26 @@ pub enum Command {
         /// Show what would change without rolling back.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BackupCommand {
+    /// Write a backup now.
+    Create {
+        /// File to write. Default: a new file in the backup directory.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List the backups in the backup directory.
+    List,
+    /// Restore a backup into the data directory. Stop the service first.
+    Restore {
+        file: PathBuf,
+        /// Replace an existing state. What was there is kept in
+        /// `before-restore-TIME` inside the data directory.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -174,6 +279,10 @@ impl Cli {
                 }
             }
             Command::AdminAccess { reset } => admin_access(&bootstrap, reset),
+            Command::Firewall { action } => firewall(&bootstrap, &action),
+            Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
+            Command::Docker { action } => crate::cli_docker::run(&bootstrap, action),
+            Command::Backup { action } => backup(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;
                 use utoipa::OpenApi;
@@ -182,6 +291,121 @@ impl Cli {
             }
         }
     }
+}
+
+fn backup(bootstrap: &Bootstrap, action: BackupCommand) -> Result<ExitCode> {
+    let dir = bootstrap.backup.dir_or_default(&bootstrap.data_dir);
+    match action {
+        BackupCommand::Create { output } => {
+            let path = output.unwrap_or_else(|| dir.join(crate::backup::file_name()));
+            let manifest = crate::backup::create(&bootstrap.data_dir, &path)?;
+            println!(
+                "Wrote {} (Hearthgate {}). It holds private keys: keep it safe.",
+                path.display(),
+                manifest.version
+            );
+        }
+        BackupCommand::List => {
+            let all = crate::backup::list(&dir);
+            if all.is_empty() {
+                println!("No backups in {}.", dir.display());
+            }
+            for path in all.iter().rev() {
+                let size = std::fs::metadata(path).map_or(0, |m| m.len());
+                match crate::backup::inspect(path) {
+                    Ok(m) => println!(
+                        "{}  {}  Hearthgate {}  {} KiB",
+                        path.display(),
+                        m.created,
+                        m.version,
+                        size.div_ceil(1024)
+                    ),
+                    Err(e) => println!("{}  unreadable: {e:#}", path.display()),
+                }
+            }
+        }
+        BackupCommand::Restore { file, force } => {
+            let manifest = crate::backup::restore(&file, &bootstrap.data_dir, force)?;
+            println!(
+                "Restored the backup from {} (Hearthgate {}) into {}. Start the service again.",
+                manifest.created,
+                manifest.version,
+                bootstrap.data_dir.display()
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn firewall(bootstrap: &Bootstrap, action: &FirewallCommand) -> Result<ExitCode> {
+    use crate::firewall::{CONFIRM_KEY, PENDING_KEY};
+    let store = open_store(bootstrap)?;
+    let pending: Option<hearthgate_firewall::Pending> = store
+        .meta_get(PENDING_KEY)?
+        .and_then(|p| serde_json::from_str(&p).ok());
+    match action {
+        FirewallCommand::Status => {
+            let state = store.current_state()?;
+            let fw = &state.firewall;
+            if fw.enabled {
+                println!(
+                    "The firewall is on: {} rule(s), {} blocklist(s), {} blocked countr{}.",
+                    fw.rules.len(),
+                    fw.blocklists.iter().filter(|b| b.enabled).count(),
+                    fw.countries.len(),
+                    if fw.countries.len() == 1 { "y" } else { "ies" }
+                );
+                println!(
+                    "LAN access to every port: {}.",
+                    if fw.allow_lan { "yes" } else { "no" }
+                );
+            } else {
+                println!("The firewall is off.");
+            }
+            match pending {
+                Some(p) if !p.expired() => println!(
+                    "Revision {} changed it. Confirm within {}s with `hearthgate firewall confirm`, \
+                     or it is undone.",
+                    p.revision,
+                    p.seconds_left()
+                ),
+                _ => {}
+            }
+        }
+        FirewallCommand::Confirm => match pending {
+            Some(p) if !p.expired() => {
+                store.meta_set(CONFIRM_KEY, &p.revision.to_string())?;
+                println!("Kept the firewall change from revision {}.", p.revision);
+            }
+            Some(_) => {
+                println!("Too late: the change has expired and is being undone.");
+                return Ok(ExitCode::FAILURE);
+            }
+            None => {
+                println!("No firewall change is waiting for confirmation.");
+                return Ok(ExitCode::FAILURE);
+            }
+        },
+        FirewallCommand::Off => {
+            let mut state = store.current_state()?;
+            if !state.firewall.enabled {
+                println!("The firewall is already off.");
+                return Ok(ExitCode::SUCCESS);
+            }
+            state.firewall.enabled = false;
+            let applied = store.apply(
+                &state,
+                &author(),
+                "Turn the firewall off from the command line",
+            )?;
+            println!(
+                "Revision {}: the firewall is off. A running Hearthgate removes its rules within a \
+                 second.",
+                applied.meta().id
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn admin_access(bootstrap: &Bootstrap, reset: bool) -> Result<ExitCode> {
@@ -219,7 +443,7 @@ fn admin_access(bootstrap: &Bootstrap, reset: bool) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn open_store(bootstrap: &Bootstrap) -> Result<Store> {
+pub(crate) fn open_store(bootstrap: &Bootstrap) -> Result<Store> {
     Store::open_dir(&bootstrap.data_dir).with_context(|| {
         format!(
             "cannot open the state database in {} (run as root or the hearthgate user, or pass \
@@ -243,7 +467,7 @@ fn read_state_file(file: &Path) -> Result<DesiredState> {
 }
 
 /// Who made a change, for the revision history.
-fn author() -> String {
+pub(crate) fn author() -> String {
     let user = std::env::var("SUDO_USER")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "unknown".to_owned());
@@ -285,6 +509,14 @@ fn apply(bootstrap: &Bootstrap, file: &Path, message: &str, dry_run: bool) -> Re
         Applied::Created(meta) => {
             print!("{changes}");
             println!("Applied as revision {}: {}.", meta.id, summary(&state));
+            if state.firewall.enabled && state.firewall != current.firewall {
+                println!(
+                    "The firewall changed. Check that you can still connect (for example open a \
+                     new SSH session), then run `hearthgate firewall confirm` within {} seconds, \
+                     or the change is undone.",
+                    hearthgate_firewall::CONFIRM_WINDOW.as_secs()
+                );
+            }
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -479,12 +711,19 @@ fn plural(n: usize, word: &str) -> String {
 /// One-line summary such as "2 interfaces, 3 services, 2 routes".
 #[must_use]
 pub fn summary(state: &DesiredState) -> String {
-    format!(
+    let mut out = format!(
         "{}, {}, {}",
         plural(state.interfaces.len(), "interface"),
         plural(state.services.len(), "service"),
         plural(state.routes.len(), "route")
-    )
+    );
+    if !state.containers.is_empty() {
+        out = format!("{out}, {}", plural(state.containers.len(), "container"));
+    }
+    if !state.stacks.is_empty() {
+        out = format!("{out}, {}", plural(state.stacks.len(), "stack"));
+    }
+    out
 }
 
 /// Unified diff of two states in their TOML form. Empty when equal.

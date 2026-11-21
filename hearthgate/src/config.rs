@@ -33,6 +33,28 @@ pub struct Bootstrap {
     /// Docker discovery for `kind = "docker"` services.
     #[serde(default)]
     pub docker: Docker,
+    /// Scheduled backups.
+    #[serde(default)]
+    pub backup: BackupSettings,
+    /// Checking for new releases.
+    #[serde(default)]
+    pub updates: Updates,
+}
+
+/// Release checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Updates {
+    /// Ask GitHub once a day whether a newer release exists, and log and
+    /// notify when it does. Nothing is ever installed by itself.
+    #[serde(default = "default_true")]
+    pub check: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { check: true }
+    }
 }
 
 impl Default for Bootstrap {
@@ -42,6 +64,8 @@ impl Default for Bootstrap {
             log: default_log(),
             admin: Admin::default(),
             docker: Docker::default(),
+            backup: BackupSettings::default(),
+            updates: Updates::default(),
         }
     }
 }
@@ -149,6 +173,10 @@ pub struct Docker {
     /// Path of the Docker socket.
     #[serde(default = "default_docker_socket")]
     pub socket: PathBuf,
+    /// Run the containers and stacks of the desired state. Off: Hearthgate
+    /// only follows existing containers.
+    #[serde(default = "default_true")]
+    pub manage: bool,
 }
 
 impl Default for Docker {
@@ -156,8 +184,58 @@ impl Default for Docker {
         Self {
             enabled: true,
             socket: default_docker_socket(),
+            manage: true,
         }
     }
+}
+
+/// Scheduled backups (see `hearthgate backup`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackupSettings {
+    /// Write backups on a schedule.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Where to write them. Default: `backups` in the data directory. A
+    /// directory elsewhere must be writable by the service (systemd:
+    /// `ReadWritePaths=`).
+    #[serde(default)]
+    pub dir: Option<PathBuf>,
+    /// How often.
+    #[serde(
+        default = "default_backup_interval",
+        with = "hearthgate_model::duration::serde"
+    )]
+    pub interval: std::time::Duration,
+    /// How many to keep; older ones are removed.
+    #[serde(default = "default_backup_keep")]
+    pub keep: usize,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dir: None,
+            interval: default_backup_interval(),
+            keep: default_backup_keep(),
+        }
+    }
+}
+
+impl BackupSettings {
+    #[must_use]
+    pub fn dir_or_default(&self, data_dir: &Path) -> PathBuf {
+        self.dir.clone().unwrap_or_else(|| data_dir.join("backups"))
+    }
+}
+
+fn default_backup_interval() -> std::time::Duration {
+    std::time::Duration::from_secs(86_400)
+}
+
+fn default_backup_keep() -> usize {
+    7
 }
 
 fn default_true() -> bool {

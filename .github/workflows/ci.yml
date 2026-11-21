@@ -41,7 +41,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
+      # The runner has Docker and Compose, so the Docker tests must not skip.
       - run: cargo test --locked
+        env:
+          HEARTHGATE_DOCKER_TESTS: '1'
+      # The firewall and VPN tests build network namespaces, load real
+      # nftables rulesets and start real WireGuard tunnels, so they skip
+      # without root. Run them again as root (only the test binaries, so the
+      # build output stays owned by the runner).
+      - name: Firewall and VPN tests in network namespaces
+        run: |
+          sudo apt-get install -y --no-install-recommends nftables iproute2 wireguard-tools
+          cargo test --locked -p hearthgate-firewall --test netns
+          cargo test --locked -p hearthgate --test vpn_netns
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
+          HEARTHGATE_NETNS_TESTS: '1'
+
+  deny:
+    name: dependencies (advisories, licenses, sources)
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+      - name: npm audit (dashboard)
+        working-directory: dashboard
+        run: npm audit --omit=dev --audit-level=high
 
   dashboard:
     name: dashboard (svelte-check, unit, end-to-end)

@@ -4,9 +4,17 @@
 //! settings and the daemon that wires the subsystems together. The
 //! subsystems themselves live in the `hearthgate-*` crates.
 
+pub mod backup;
 pub mod cli;
+mod cli_docker;
+mod cli_vpn;
 pub mod config;
 pub mod daemon;
+pub mod docker;
+pub mod events;
+pub mod firewall;
+pub mod update;
+pub mod vpn;
 
 /// Version of this build.
 ///

@@ -17,13 +17,13 @@ TimeoutStopSec=45s
 # A dedicated, unprivileged user, created from hearthgate.sysusers.
 User=hearthgate
 Group=hearthgate
-# To route to Docker containers, let Hearthgate read the Docker socket by
-# uncommenting this line. Access to the Docker socket is equivalent to root,
-# so only do this if you use docker services.
+# To route to Docker containers and run managed containers and stacks, let
+# Hearthgate use the Docker socket by uncommenting this line. Access to the
+# Docker socket is equivalent to root, so only do this if you use Docker.
 #SupplementaryGroups=docker
 
-# Only the capabilities Hearthgate needs: bind ports below 1024 and, in later
-# releases, manage the VPN interface and firewall.
+# Only the capabilities Hearthgate needs: bind ports below 1024, and load
+# its nftables firewall (the nft program it runs inherits these).
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW
 NoNewPrivileges=true
@@ -32,14 +32,21 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-PrivateDevices=true
+# No devices except /dev/net/tun, for the userspace WireGuard (wireguard-go)
+# on kernels without the WireGuard module.
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
 StateDirectory=hearthgate
 StateDirectoryMode=0700
 ConfigurationDirectory=hearthgate
 LogsDirectory=hearthgate
+# /run/wireguard holds wireguard-go's control sockets.
+RuntimeDirectory=hearthgate wireguard
 UMask=0077
 
-# Kernel and process hardening.
+# Kernel and process hardening. /proc/sys is read-only, so the VPN can't
+# turn on IPv4 forwarding by itself: packaging/sysctl/60-hearthgate.conf
+# does that at boot.
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true

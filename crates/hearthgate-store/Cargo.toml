@@ -10,7 +10,6 @@ publish.workspace = true
 
 [dependencies]
 hearthgate-model.workspace = true
-humantime.workspace = true
 rusqlite.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

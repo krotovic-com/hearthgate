@@ -10,6 +10,11 @@ publish.workspace = true
 
 [dependencies]
 hearthgate-acme.workspace = true
+hearthgate-firewall.workspace = true
+hearthgate-upnp.workspace = true
+hearthgate-vpn.workspace = true
+hearthgate-docker.workspace = true
+hearthgate-notify.workspace = true
 hearthgate-model = { workspace = true, features = ["openapi"] }
 hearthgate-proxy.workspace = true
 hearthgate-store.workspace = true
@@ -38,6 +43,7 @@ tracing-subscriber.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+hearthgate-firewall.workspace = true
 bytes.workspace = true
 http-body-util.workspace = true
 tempfile.workspace = true

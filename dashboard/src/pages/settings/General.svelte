@@ -4,6 +4,10 @@
   import { live } from '../../lib/live.svelte';
   import { gw } from '../../lib/gateway.svelte';
   import { duration } from '../../lib/format';
+  import Select from '../../lib/ui/Select.svelte';
+  import { setTheme, storedTheme, type Theme } from '../../lib/theme';
+
+  let theme = $state<Theme>(storedTheme());
 </script>
 
 <Section id="general" title="General" description="This gateway and its configuration.">
@@ -18,6 +22,19 @@
     description="The running configuration as TOML. Restore it with `hearthgate import FILE`."
   >
     <a class="download" href="/api/v1/state/export" download>Export revision {gw.revision?.id ?? 0}</a>
+  </SettingRow>
+  <SettingRow label="Appearance" description="For this browser.">
+    <Select
+      label="Appearance"
+      hideLabel
+      bind:value={theme}
+      onchange={() => setTheme(theme)}
+      options={[
+        { value: 'system', label: 'Same as the system' },
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
+      ]}
+    />
   </SettingRow>
 </Section>
 

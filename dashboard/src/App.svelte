@@ -10,6 +10,10 @@
   import Interfaces from './pages/Interfaces.svelte';
   import Services from './pages/Services.svelte';
   import Routes from './pages/Routes.svelte';
+  import Firewall from './pages/Firewall.svelte';
+  import Vpn from './pages/Vpn.svelte';
+  import Containers from './pages/Containers.svelte';
+  import FirewallPending from './lib/layout/FirewallPending.svelte';
   import History from './pages/History.svelte';
   import Settings from './pages/Settings.svelte';
   import NotFound from './pages/NotFound.svelte';
@@ -44,6 +48,9 @@
     '/interfaces': { title: 'Public interfaces', component: Interfaces },
     '/services': { title: 'Services', component: Services },
     '/routes': { title: 'Routes', component: Routes },
+    '/containers': { title: 'Containers', component: Containers },
+    '/vpn': { title: 'VPN peers', component: Vpn },
+    '/firewall': { title: 'Firewall', component: Firewall },
     '/history': { title: 'History', component: History },
     '/settings': { title: 'Settings', component: Settings },
   } as const;
@@ -93,6 +100,7 @@
         <span class="small secondary">Logged in as <span class="strong">{user.username}</span></span>
         <Button variant="ghost" size="small" onclick={logout}>Log out</Button>
       </div>
+      <FirewallPending />
       {#if gw.error}
         <Alert>{gw.error}</Alert>
       {/if}

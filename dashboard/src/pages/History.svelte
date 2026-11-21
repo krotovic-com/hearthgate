@@ -136,7 +136,7 @@
     background: var(--hg-color-accent-subtle);
   }
   .revisions a[aria-current='true'] .secondary {
-    color: var(--hg-ink-700);
+    color: var(--hg-color-text-body);
   }
   .revisions a:hover .msg {
     text-decoration: underline;

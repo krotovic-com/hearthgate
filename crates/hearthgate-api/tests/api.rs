@@ -28,6 +28,7 @@ struct Api {
     changed: Arc<tokio::sync::Notify>,
     store: Arc<Store>,
     tls: Option<Arc<AdminTls>>,
+    perimeter: Arc<hearthgate_firewall::Perimeter>,
     dir: tempfile::TempDir,
 }
 
@@ -45,6 +46,9 @@ const LOCAL: Options = Options {
 
 async fn start(options: Options) -> Api {
     let dir = tempfile::tempdir().unwrap();
+    let perimeter = Arc::new(hearthgate_firewall::Perimeter::new(
+        hearthgate_firewall::Nft::new(vec!["false".into()]),
+    ));
     let changed = Arc::new(tokio::sync::Notify::new());
     let store = Arc::new(Store::open_dir(&dir.path().join("data")).unwrap());
     let tls = options.tls.then(|| {
@@ -67,6 +71,13 @@ async fn start(options: Options) -> Api {
             CancellationToken::new(),
         )),
         live: Arc::default(),
+        perimeter: Arc::clone(&perimeter),
+        router: Arc::default(),
+        vpn: Arc::new(hearthgate_vpn::Runtime::new(
+            hearthgate_vpn::Device::new("hgtest-none", hearthgate_vpn::Tools::default()),
+            Some(dir.path().join("vpn")),
+        )),
+        docker: Arc::default(),
     };
     let listener = TcpListener::bind(options.bind).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -85,6 +96,7 @@ async fn start(options: Options) -> Api {
         changed,
         store,
         tls,
+        perimeter,
         dir,
     }
 }
@@ -804,6 +816,12 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         auth: Arc::default(),
         access: Arc::clone(&access),
         live: Arc::default(),
+        perimeter: Arc::new(hearthgate_firewall::Perimeter::new(
+            hearthgate_firewall::Nft::new(vec!["false".into()]),
+        )),
+        router: Arc::default(),
+        vpn: Arc::default(),
+        docker: Arc::default(),
     };
     let first = free_port();
     access
@@ -821,6 +839,7 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         changed: Arc::new(tokio::sync::Notify::new()),
         store: Arc::clone(&store),
         tls: None,
+        perimeter: Arc::clone(&state.perimeter),
         dir,
     };
     let (cookie, csrf) = set_up(&api).await;
@@ -934,4 +953,208 @@ async fn live_endpoints() {
     let text = String::from_utf8_lossy(frame.data_ref().unwrap()).into_owned();
     assert!(text.starts_with("event: status"), "{text}");
     api.stop.cancel();
+}
+
+#[tokio::test]
+async fn firewall_endpoints_and_change_confirmation() {
+    let api = start(LOCAL).await;
+    let (status, body) = call(api.port, "GET", "/api/v1/firewall", Some(TOKEN), None).await;
+    assert_eq!(status, 200, "{body}");
+    let info = json_of(&body);
+    assert_eq!(info["installed"], false);
+    assert!(info["pending"].is_null());
+    assert_eq!(info["dropped"]["total"], 0);
+    let (status, body) = call(api.port, "GET", "/api/v1/router", Some(TOKEN), None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(json_of(&body)["enabled"], false);
+
+    // Nothing to confirm, and nothing to ban into while the firewall is off.
+    let (status, _) = call(
+        api.port,
+        "POST",
+        "/api/v1/firewall/confirm",
+        Some(TOKEN),
+        None,
+    )
+    .await;
+    assert_eq!(status, 404);
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/firewall/bans",
+        Some(TOKEN),
+        Some(json!({ "address": "203.0.113.9" })),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+
+    // A connection opened before the change can't confirm it. The server
+    // ends that connection so the client's next request opens a new one.
+    let stream = TcpStream::connect(("127.0.0.1", api.port)).await.unwrap();
+    let (mut old, conn) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .unwrap();
+    let conn = tokio::spawn(conn);
+    let get = |path: &str, method: &str| {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header("host", "localhost")
+            .header("authorization", format!("Bearer {TOKEN}"))
+            .body(Full::new(Bytes::new()))
+            .unwrap()
+    };
+    let first = old
+        .send_request(get("/api/v1/status", "GET"))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), 200);
+    assert!(first.headers().get("connection").is_none());
+    first.into_body().collect().await.unwrap();
+    api.perimeter
+        .begin_pending(hearthgate_firewall::Pending::new(
+            7,
+            hearthgate_model::Firewall::default(),
+        ));
+    let refused = old
+        .send_request(get("/api/v1/firewall/confirm", "POST"))
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 409);
+    assert_eq!(refused.headers()["connection"], "close");
+    refused.into_body().collect().await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), conn)
+        .await
+        .expect("the old connection is closed")
+        .unwrap()
+        .unwrap();
+
+    let (status, body) = call(api.port, "GET", "/api/v1/status", Some(TOKEN), None).await;
+    assert_eq!(
+        json_of(&body)["firewall"]["pending"]["revision"],
+        7,
+        "{status} {body}"
+    );
+    // A new connection confirms it.
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/firewall/confirm",
+        Some(TOKEN),
+        None,
+    )
+    .await;
+    assert_eq!(status, 204, "{body}");
+    api.stop.cancel();
+}
+
+#[tokio::test]
+async fn vpn_status_and_new_peer_configs() {
+    let api = start(LOCAL).await;
+    let (status, body) = call(api.port, "GET", "/api/v1/vpn", Some(TOKEN), None).await;
+    assert_eq!(status, 200, "{body}");
+    let info = json_of(&body);
+    assert_eq!(info["enabled"], false);
+    assert_eq!(info["running"], false);
+    assert_eq!(info["address"], "10.88.0.1");
+    assert!(info["endpoint"].is_null());
+
+    // Without an endpoint, peers would not know where to connect.
+    let ask = |body: Value| {
+        call(
+            api.port,
+            "POST",
+            "/api/v1/vpn/peer-config",
+            Some(TOKEN),
+            Some(body),
+        )
+    };
+    let (status, body) = ask(json!({ "name": "phone" })).await;
+    assert_eq!(status, 409, "{body}");
+
+    // A draft state (as the dashboard sends it) picks the address and routes.
+    let draft = json!({
+        "services": [{ "name": "nas", "kind": "external", "host": "192.168.1.20", "ports": { "web": 5000 } }],
+        "vpn": {
+            "enabled": true,
+            "endpoint": "vpn.example.com",
+            "peers": [{ "name": "laptop", "public_key": "Y2FD6uTgrq+/bbBAXCNOtE+PGk8Papoh7qaWBpQUXn0=", "address": "10.88.0.2" }]
+        }
+    });
+    let (status, body) = ask(json!({ "name": "guest", "access": ["nas"], "state": draft })).await;
+    assert_eq!(status, 200, "{body}");
+    let peer = json_of(&body);
+    assert_eq!(peer["address"], "10.88.0.3");
+    let config = peer["config"].as_str().unwrap();
+    assert!(
+        config.contains("Endpoint = vpn.example.com:51820"),
+        "{config}"
+    );
+    assert!(
+        config.contains("AllowedIPs = 10.88.0.0/24, 192.168.1.20/32"),
+        "{config}"
+    );
+    assert!(
+        config.contains("DNS = 10.88.0.1, home.internal"),
+        "{config}"
+    );
+    assert!(peer["qr_svg"].as_str().unwrap().starts_with("<?xml"));
+    let key = peer["public_key"].as_str().unwrap();
+    assert!(hearthgate_model::is_wireguard_key(key));
+    // Nothing was stored.
+    let stored = api.store.current_state().unwrap().vpn.peers;
+    assert!(stored.is_empty(), "{stored:?}");
+    // The same server key every time.
+    let server_key = |c: &str| {
+        c.lines()
+            .find(|l| l.starts_with("PublicKey"))
+            .unwrap()
+            .to_owned()
+    };
+    let (_, again) = ask(json!({ "name": "tv", "state": draft })).await;
+    let again = json_of(&again);
+    assert_eq!(
+        server_key(config),
+        server_key(again["config"].as_str().unwrap())
+    );
+    assert_ne!(again["public_key"], peer["public_key"]);
+
+    for (bad, why) in [
+        (json!({ "name": "Bad Name", "state": draft }), "name"),
+        (
+            json!({ "name": "x", "access": ["nope"], "state": draft }),
+            "service",
+        ),
+        (
+            json!({ "name": "x", "address": "10.88.0.2", "state": draft }),
+            "taken address",
+        ),
+        (
+            json!({ "name": "x", "address": "10.99.0.2", "state": draft }),
+            "outside the subnet",
+        ),
+    ] {
+        let (status, body) = ask(bad).await;
+        assert_eq!(status, 422, "{why}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn docker_endpoints_without_docker() {
+    let api = start(LOCAL).await;
+    let (status, body) = call(api.port, "GET", "/api/v1/docker", Some(TOKEN), None).await;
+    assert_eq!(status, 200, "{body}");
+    let info = json_of(&body);
+    assert_eq!(info["enabled"], false);
+    assert_eq!(info["containers"], json!([]));
+    for (method, path, want) in [
+        ("POST", "/api/v1/docker/containers/web/restart", 404),
+        ("POST", "/api/v1/docker/containers/web/update", 404),
+        ("POST", "/api/v1/docker/stacks/notes/update", 404),
+        ("GET", "/api/v1/docker/containers/web/logs?tail=5", 404),
+        ("GET", "/api/v1/docker/updates", 503),
+    ] {
+        let (status, body) = call(api.port, method, path, Some(TOKEN), None).await;
+        assert_eq!(status, want, "{method} {path}: {body}");
+    }
 }

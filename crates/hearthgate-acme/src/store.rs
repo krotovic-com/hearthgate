@@ -100,12 +100,11 @@ pub fn inspect_pem(name: &str, source: CertSource, cert_pem: &[u8]) -> Result<Ce
             }
         }
     }
-    if domains.is_empty() {
-        if let Some(cn) = cert.subject().iter_common_name().next() {
-            if let Ok(cn) = cn.as_str() {
-                domains.push(cn.to_ascii_lowercase());
-            }
-        }
+    if domains.is_empty()
+        && let Some(cn) = cert.subject().iter_common_name().next()
+        && let Ok(cn) = cn.as_str()
+    {
+        domains.push(cn.to_ascii_lowercase());
     }
     Ok(CertInfo {
         name: name.to_owned(),

@@ -1,0 +1,25 @@
+# The documentation site, built with mdBook (https://rust-lang.github.io/mdBook/)
+# and published to GitHub Pages by .github/workflows/docs.yml.
+#   mdbook serve docs     # preview at http://localhost:3000
+[book]
+title = "Hearthgate"
+description = "The single, secure entry point from the internet to your home server."
+authors = ["Hearthgate contributors"]
+language = "en"
+src = "."
+
+[build]
+build-dir = "../target/book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/krotovic-com/hearthgate"
+edit-url-template = "https://github.com/krotovic-com/hearthgate/edit/main/docs/{path}"
+site-url = "/hearthgate/"
+default-theme = "light"
+preferred-dark-theme = "navy"
+favicon-svg = "brand/favicon.svg"
+no-section-label = true
+
+[output.html.search]
+limit-results = 20

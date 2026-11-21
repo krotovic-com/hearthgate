@@ -267,7 +267,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: var(--hg-ink-700);
+    color: var(--hg-color-text-body);
     font: 500 14px/20px var(--hg-font-body);
     cursor: pointer;
   }
@@ -316,7 +316,7 @@
     background: var(--hg-color-accent-subtle);
   }
   tr.selected .secondary {
-    color: var(--hg-ink-700);
+    color: var(--hg-color-text-body);
   }
   .name {
     color: var(--hg-color-text-primary);

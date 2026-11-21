@@ -307,3 +307,200 @@ fn acme_directory_defaults() {
 fn print_export() {
     println!("{}", DesiredState::from_toml(EXAMPLE).unwrap().to_toml());
 }
+
+#[test]
+fn vpn_is_checked() {
+    const KEY: &str = "Y2FD6uTgrq+/bbBAXCNOtE+PGk8Papoh7qaWBpQUXn0=";
+    let peer = |name: &str, key: &str, address: &str, access: &str| {
+        format!(
+            "[[vpn.peers]]\nname = \"{name}\"\npublic_key = \"{key}\"\naddress = \"{address}\"\naccess = {access}\n"
+        )
+    };
+    let base = "[vpn]\nenabled = true\n";
+    let ok = format!(
+        "[[services]]\nname = \"nas\"\nkind = \"external\"\nhost = \"192.168.1.2\"\nports = {{ web = 80 }}\n\n{base}{}{}",
+        peer("phone", KEY, "10.88.0.2", "\"all\""),
+        peer(
+            "guest",
+            "YAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=",
+            "10.88.0.3",
+            "[\"nas\"]"
+        )
+    );
+    assert!(messages(&ok).is_empty(), "{:?}", messages(&ok));
+    let state = DesiredState::from_toml(&ok).unwrap();
+    assert_eq!(state.vpn.free_address(), Some("10.88.0.4".parse().unwrap()));
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+
+    assert_problem(
+        &format!("{base}{}", peer("Phone", KEY, "10.88.0.2", "\"all\"")),
+        "invalid name",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", "short", "10.88.0.2", "\"all\"")),
+        "not a WireGuard key",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.88.0.1", "\"all\"")),
+        "belongs to this machine",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.99.0.2", "\"all\"")),
+        "not a host address",
+    );
+    assert_problem(
+        &format!("{base}{}", peer("phone", KEY, "10.88.0.2", "[\"nope\"]")),
+        "no service is called `nope`",
+    );
+    assert_problem(
+        &format!(
+            "{base}{}{}",
+            peer("a", KEY, "10.88.0.2", "\"all\""),
+            peer("b", KEY, "10.88.0.2", "\"all\"")
+        ),
+        "same public key",
+    );
+    assert_problem("[vpn]\nsubnet = \"8.8.0.0/24\"\n", "private network");
+    assert_problem("[vpn]\nsubnet = \"10.0.0.0/8\"\n", "/16 to /30");
+    assert_problem("[vpn]\nendpoint = \"bad host!\"\n", "vpn.endpoint");
+    assert_problem("[dns]\nupstream = [\"dns.google\"]\n", "dns.upstream");
+    assert_problem(
+        "[[interfaces]]\nname = \"q\"\nlisteners = [{ port = 51820, mode = \"raw\", protocol = \"udp\" }]\n[vpn]\nenabled = true\n",
+        "used by a public interface",
+    );
+}
+
+#[test]
+fn containers_and_stacks_are_checked() {
+    let ok = r#"
+[[containers]]
+name = "whoami"
+image = "traefik/whoami:v1.10"
+env = { TZ = "Europe/Prague" }
+volumes = ["/srv/whoami:/data:ro", "cache:/cache"]
+publish = ["127.0.0.1:8081:80"]
+
+[[stacks]]
+name = "notes"
+compose = "services:\n  app:\n    image: nginx\n"
+running = false
+"#;
+    assert!(messages(ok).is_empty(), "{:?}", messages(ok));
+    let state = DesiredState::from_toml(ok).unwrap();
+    assert!(state.containers[0].running);
+    assert!(!state.stacks[0].running);
+    let exported = state.to_toml();
+    assert!(!exported.contains("running = true"), "{exported}");
+    assert_eq!(DesiredState::from_toml(&exported).unwrap(), state);
+
+    assert_problem(
+        "[[containers]]\nname = \"Bad\"\nimage = \"x\"\n",
+        "invalid name",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"has space\"\n",
+        "image",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\nenv = { \"A-B\" = \"1\" }\n",
+        "not a variable name",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\nvolumes = [\"./x:/y\"]\n",
+        "volumes",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\npublish = [\"80\"]\n",
+        "publish",
+    );
+    assert_problem(
+        "[[interfaces]]\nname = \"web\"\nlisteners = [{ port = 8080, mode = \"raw\" }]\n[[containers]]\nname = \"a\"\nimage = \"x\"\npublish = [\"8080:80\"]\n",
+        "used by a public interface",
+    );
+    assert_problem("[[stacks]]\nname = \"s\"\ncompose = \" \"\n", "empty");
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\n[[containers]]\nname = \"a\"\nimage = \"y\"\n",
+        "more than once",
+    );
+}
+
+#[test]
+fn dns01_is_checked() {
+    let iface = "[[interfaces]]\nname = \"web\"\ndomains = [\"example.com\", \"*.example.com\"]\nlisteners = [{ port = 443, mode = \"https\" }]\n";
+    // Wildcards need dns-01.
+    assert_problem(
+        &format!("[acme]\naccept_terms = true\n{iface}"),
+        "acme.challenge = \"dns-01\"",
+    );
+    assert_problem(
+        &format!("[acme]\naccept_terms = true\nchallenge = \"dns-01\"\n{iface}"),
+        "set a DNS provider",
+    );
+    let cloudflare = format!(
+        "[acme]\naccept_terms = true\nchallenge = \"dns-01\"\n[acme.dns]\nprovider = \"cloudflare\"\napi_token_file = \"/etc/hearthgate/cf\"\n{iface}"
+    );
+    assert!(
+        messages(&cloudflare).is_empty(),
+        "{:?}",
+        messages(&cloudflare)
+    );
+    let state = DesiredState::from_toml(&cloudflare).unwrap();
+    assert_eq!(
+        state.acme.dns.as_ref().unwrap().propagation,
+        std::time::Duration::from_secs(30)
+    );
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"cloudflare\"\napi_token_file = \"cf\"\n",
+        "absolute path",
+    );
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"cloudflare\"\n",
+        "API token",
+    );
+    let rfc = "[acme]\n[acme.dns]\nprovider = \"rfc2136\"\nserver = \"ns.example.com:5353\"\nzone = \"example.com\"\nkey_name = \"hg\"\nkey_file = \"/etc/hearthgate/tsig\"\nkey_algorithm = \"hmac-sha512\"\n";
+    assert!(messages(rfc).is_empty(), "{:?}", messages(rfc));
+    assert_problem(
+        "[acme]\n[acme.dns]\nprovider = \"rfc2136\"\n",
+        "zone to update",
+    );
+    assert_problem(
+        &rfc.replace("ns.example.com:5353", "ns:0"),
+        "host or host:port",
+    );
+}
+
+#[test]
+fn notifications_are_checked() {
+    let ok = r#"
+[notifications]
+events = ["certificates", "health"]
+[[notifications.webhooks]]
+name = "phone"
+url = "https://ntfy.sh/my-topic"
+format = "ntfy"
+[notifications.email]
+server = "smtp.example.com"
+username = "me"
+password_file = "/etc/hearthgate/smtp"
+from = "hearthgate@example.com"
+to = ["me@example.com"]
+"#;
+    assert!(messages(ok).is_empty(), "{:?}", messages(ok));
+    let state = DesiredState::from_toml(ok).unwrap();
+    assert!(state.notifications.wants(EventKind::Health));
+    assert!(!state.notifications.wants(EventKind::Updates));
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+    assert_problem(
+        "[[notifications.webhooks]]\nname = \"a\"\nurl = \"ftp://x\"\n",
+        "http(s) URL",
+    );
+    assert_problem(
+        &ok.replace("to = [\"me@example.com\"]", "to = [\"not an address\"]"),
+        "not an email address",
+    );
+    assert_problem(
+        &ok.replace("username = \"me\"\n", ""),
+        "needed with a password",
+    );
+}

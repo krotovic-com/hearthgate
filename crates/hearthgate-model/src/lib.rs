@@ -9,13 +9,22 @@
 //! certificates, health) live in the subsystem crates, which compile a
 //! validated [`DesiredState`] into their own runtime structures.
 
+mod docker;
+pub mod duration;
+mod firewall;
 mod hostname;
+mod notify;
 mod types;
 mod validate;
+mod vpn;
 
+pub use docker::*;
+pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};
+pub use notify::*;
 pub use types::*;
-pub use validate::{ValidationError, ValidationErrors};
+pub use validate::{ValidationError, ValidationErrors, is_valid_name};
+pub use vpn::*;
 
 /// Errors from reading a desired state document.
 #[derive(Debug, thiserror::Error)]
@@ -112,6 +121,48 @@ impl DesiredState {
             route.hosts.dedup();
         }
         self.routes.sort_by(|a, b| a.name.cmp(&b.name));
+        for container in &mut self.containers {
+            container.name = container.name.trim().to_owned();
+            container.image = container.image.trim().to_owned();
+        }
+        self.containers.sort_by(|a, b| a.name.cmp(&b.name));
+        for stack in &mut self.stacks {
+            stack.name = stack.name.trim().to_owned();
+        }
+        self.stacks.sort_by(|a, b| a.name.cmp(&b.name));
+        let fw = &mut self.firewall;
+        for rule in &mut fw.rules {
+            rule.name = rule.name.trim().to_owned();
+            rule.sources = ipnet::IpNet::aggregate(&rule.sources);
+            rule.ports.sort();
+            rule.ports.dedup();
+        }
+        fw.allow = ipnet::IpNet::aggregate(&fw.allow);
+        fw.block = ipnet::IpNet::aggregate(&fw.block);
+        for list in &mut fw.blocklists {
+            list.name = list.name.trim().to_owned();
+            list.url = list.url.trim().to_owned();
+        }
+        fw.blocklists.sort_by(|a, b| a.name.cmp(&b.name));
+        for peer in &mut self.vpn.peers {
+            peer.name = peer.name.trim().to_owned();
+            peer.public_key = peer.public_key.trim().to_owned();
+            if let Access::Services(list) = &mut peer.access {
+                list.sort();
+                list.dedup();
+            }
+        }
+        self.vpn.peers.sort_by(|a, b| a.name.cmp(&b.name));
+        self.vpn.subnet = self.vpn.subnet.trunc();
+        if let Some(endpoint) = &mut self.vpn.endpoint {
+            *endpoint = endpoint.trim().to_ascii_lowercase();
+        }
+        self.dns.zone = self.dns.zone.trim().trim_matches('.').to_ascii_lowercase();
+        for country in &mut fw.countries {
+            *country = country.trim().to_ascii_lowercase();
+        }
+        fw.countries.sort();
+        fw.countries.dedup();
         self
     }
 

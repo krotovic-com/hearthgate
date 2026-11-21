@@ -1,0 +1,56 @@
+[package]
+name = "hearthgate-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Not part of the main workspace: it needs a nightly toolchain.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+hearthgate-model = { path = "../crates/hearthgate-model" }
+hearthgate-proxy = { path = "../crates/hearthgate-proxy" }
+hearthgate-vpn = { path = "../crates/hearthgate-vpn" }
+hearthgate-firewall = { path = "../crates/hearthgate-firewall" }
+tokio = { version = "1", features = ["rt", "io-util"] }
+
+[[bin]]
+name = "client_hello"
+path = "fuzz_targets/client_hello.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dns_query"
+path = "fuzz_targets/dns_query.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "state_toml"
+path = "fuzz_targets/state_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "blocklist"
+path = "fuzz_targets/blocklist.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "container_options"
+path = "fuzz_targets/container_options.rs"
+test = false
+doc = false
+bench = false

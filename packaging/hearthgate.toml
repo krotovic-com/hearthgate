@@ -29,6 +29,26 @@ metrics_without_token = false
 # private_key = "/etc/hearthgate/dashboard.key"
 
 [docker]
-# Read-only discovery of containers for `kind = "docker"` services.
+# Find containers for `kind = "docker"` services, and run the containers and
+# stacks of the desired state. Needs access to the Docker socket, which is
+# equivalent to root: see SupplementaryGroups in the systemd unit.
 enabled = true
 socket = "/var/run/docker.sock"
+# Only follow existing containers; never create, change or remove any.
+# manage = false
+
+[backup]
+# A backup of the state (with its history and dashboard accounts),
+# certificates and keys, once a day. See `hearthgate backup`.
+enabled = true
+interval = "1day"
+keep = 7
+# Default: /var/lib/hearthgate/backups. Somewhere else must be writable by
+# the service: add `ReadWritePaths=/srv/backups/hearthgate` to the systemd
+# unit with `systemctl edit hearthgate`.
+# dir = "/srv/backups/hearthgate"
+
+[updates]
+# Ask GitHub once a day whether a newer release exists, and log and notify
+# when it does. Nothing is ever installed by itself.
+check = true

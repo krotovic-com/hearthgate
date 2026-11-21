@@ -5,6 +5,7 @@
  * Keep this file in sync with Figma rather than adding one-off values.
  */
 :root {
+  color-scheme: light;
   /* Primitives */
   --hg-ink-900: #0e1a2b;
   --hg-ink-800: #16263d;
@@ -43,6 +44,8 @@
   --hg-color-border-focus: var(--hg-route-400);
   --hg-color-text-primary: var(--hg-ink-900);
   --hg-color-text-secondary: var(--hg-ink-500);
+  /* Body text in diffs and logs: between primary and secondary. */
+  --hg-color-text-body: var(--hg-ink-700);
   --hg-color-text-on-accent: var(--hg-white);
   --hg-color-text-link: var(--hg-route-600);
   --hg-color-text-inverse: var(--hg-ink-50);
@@ -80,7 +83,89 @@
   --hg-radius-full: 999px;
 
   /* Typography */
-  --hg-font-display: 'Sora', system-ui, sans-serif;
-  --hg-font-body: 'Inter', system-ui, sans-serif;
-  --hg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --hg-font-display: "Sora", system-ui, sans-serif;
+  --hg-font-body: "Inter", system-ui, sans-serif;
+  --hg-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Which logo shows: the one drawn for this background. */
+  --hg-logo-on-light: block;
+  --hg-logo-on-dark: none;
+}
+
+/*
+ * Dark mode. Follows the system unless the viewer picked Light or Dark in
+ * Settings (data-theme on <html>). Same names as light mode; only the
+ * semantic colors change. Status text colors reach 4.5:1 on the dark
+ * status backgrounds and surfaces.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --hg-logo-on-light: none;
+    --hg-logo-on-dark: block;
+    --hg-color-bg-canvas: #0a1320;
+    --hg-color-bg-surface: var(--hg-ink-900);
+    --hg-color-bg-subtle: var(--hg-ink-800);
+    --hg-color-bg-inverse: var(--hg-ink-50);
+    --hg-color-border-default: var(--hg-ink-700);
+    --hg-color-border-strong: #3a4e70;
+    --hg-color-border-focus: var(--hg-route-400);
+    --hg-color-text-primary: var(--hg-ink-50);
+    --hg-color-text-secondary: var(--hg-ink-400);
+    --hg-color-text-body: var(--hg-ink-200);
+    --hg-color-text-on-accent: var(--hg-white);
+    --hg-color-text-link: var(--hg-route-400);
+    --hg-color-text-inverse: var(--hg-ink-900);
+    --hg-color-accent-default: var(--hg-route-500);
+    --hg-color-accent-hover: var(--hg-route-600);
+    --hg-color-accent-subtle: var(--hg-route-950);
+    --hg-color-status-healthy-fg: var(--hg-tunnel-500);
+    --hg-color-status-healthy-bg: var(--hg-tunnel-900);
+    --hg-color-status-warning-fg: var(--hg-amber-500);
+    --hg-color-status-warning-bg: var(--hg-amber-900);
+    /* Kept at red-600: the danger button puts white text on it. */
+    --hg-color-status-critical-fg: var(--hg-red-600);
+    --hg-color-status-critical-bg: var(--hg-red-900);
+    --hg-color-status-neutral-fg: var(--hg-ink-400);
+    --hg-color-status-neutral-bg: var(--hg-ink-800);
+    --hg-color-status-healthy-text: #5fe0bf;
+    --hg-color-status-warning-text: #f7c873;
+    --hg-color-status-critical-text: #ff9a9d;
+    --hg-color-status-neutral-text: var(--hg-ink-200);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --hg-logo-on-light: none;
+  --hg-logo-on-dark: block;
+  --hg-color-bg-canvas: #0a1320;
+  --hg-color-bg-surface: var(--hg-ink-900);
+  --hg-color-bg-subtle: var(--hg-ink-800);
+  --hg-color-bg-inverse: var(--hg-ink-50);
+  --hg-color-border-default: var(--hg-ink-700);
+  --hg-color-border-strong: #3a4e70;
+  --hg-color-border-focus: var(--hg-route-400);
+  --hg-color-text-primary: var(--hg-ink-50);
+  --hg-color-text-secondary: var(--hg-ink-400);
+  --hg-color-text-body: var(--hg-ink-200);
+  --hg-color-text-on-accent: var(--hg-white);
+  --hg-color-text-link: var(--hg-route-400);
+  --hg-color-text-inverse: var(--hg-ink-900);
+  --hg-color-accent-default: var(--hg-route-500);
+  --hg-color-accent-hover: var(--hg-route-600);
+  --hg-color-accent-subtle: var(--hg-route-950);
+  --hg-color-status-healthy-fg: var(--hg-tunnel-500);
+  --hg-color-status-healthy-bg: var(--hg-tunnel-900);
+  --hg-color-status-warning-fg: var(--hg-amber-500);
+  --hg-color-status-warning-bg: var(--hg-amber-900);
+  /* Kept at red-600: the danger button puts white text on it. */
+  --hg-color-status-critical-fg: var(--hg-red-600);
+  --hg-color-status-critical-bg: var(--hg-red-900);
+  --hg-color-status-neutral-fg: var(--hg-ink-400);
+  --hg-color-status-neutral-bg: var(--hg-ink-800);
+  --hg-color-status-healthy-text: #5fe0bf;
+  --hg-color-status-warning-text: #f7c873;
+  --hg-color-status-critical-text: #ff9a9d;
+  --hg-color-status-neutral-text: var(--hg-ink-200);
 }

@@ -1,18 +1,22 @@
 <script lang="ts">
   import Icon, { type IconName } from '../ui/Icon.svelte';
   import logo from '../logo-on-light.svg';
+  import logoDark from '../logo-on-dark.svg';
   import { route } from '../router.svelte';
   import type { StatusResponse } from '../api';
 
   let { status }: { status: StatusResponse | null } = $props();
 
-  // Sections that exist in this release. VPN peers, Firewall and AI review
-  // join the list in the releases that add them.
+  // Sections that exist in this release. AI review joins the list in the
+  // release that adds it.
   const items: { href: string; label: string; icon: IconName }[] = [
     { href: '/', label: 'Overview', icon: 'overview' },
     { href: '/interfaces', label: 'Public interfaces', icon: 'globe' },
     { href: '/services', label: 'Services', icon: 'server' },
+    { href: '/containers', label: 'Containers', icon: 'container' },
     { href: '/routes', label: 'Routes', icon: 'route' },
+    { href: '/vpn', label: 'VPN peers', icon: 'vpn' },
+    { href: '/firewall', label: 'Firewall', icon: 'firewall' },
     { href: '/history', label: 'History', icon: 'arrow' },
     { href: '/settings', label: 'Settings', icon: 'settings' },
   ];
@@ -25,7 +29,15 @@
 </script>
 
 <nav class="sidebar" aria-label="Main">
-  <a href="/" class="logo"><img src={logo} alt="Hearthgate" width="157" height="26" /></a>
+  <a href="/" class="logo"
+    ><img src={logo} alt="Hearthgate" width="157" height="26" class="on-light" /><img
+      src={logoDark}
+      alt="Hearthgate"
+      width="157"
+      height="26"
+      class="on-dark"
+    /></a
+  >
   <ul>
     {#each items as item (item.href)}
       <li>
@@ -74,9 +86,14 @@
     margin-bottom: var(--hg-spacing-xl);
   }
   .logo img {
-    display: block;
     height: 26.4px;
     width: auto;
+  }
+  .on-light {
+    display: var(--hg-logo-on-light);
+  }
+  .on-dark {
+    display: var(--hg-logo-on-dark);
   }
   ul {
     list-style: none;

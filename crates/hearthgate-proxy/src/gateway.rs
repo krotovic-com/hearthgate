@@ -134,6 +134,12 @@ impl Gateway {
         self.ctx.http.local_responses()
     }
 
+    /// Where misbehaving clients are reported (for automatic bans).
+    #[must_use]
+    pub fn abuse(&self) -> &Arc<crate::abuse::AbuseReports> {
+        &self.ctx.http.abuse
+    }
+
     /// The upstream registry plans must be compiled against.
     #[must_use]
     pub fn upstreams(&self) -> &Arc<Upstreams> {
@@ -382,6 +388,9 @@ async fn handle_tls(
         Ok(Ok((prefix, Some(hello)))) => (prefix, hello),
         Ok(Ok((_, None))) => {
             debug!(client = %peer, "not a TLS client hello");
+            ctx.http
+                .abuse
+                .report(peer.ip(), crate::abuse::Signal::HandshakeFailure);
             return;
         }
         Ok(Err(e)) => {
@@ -392,15 +401,16 @@ async fn handle_tls(
     };
     let sni = hello.sni.as_deref();
     let acme = hello.alpn.iter().any(|p| p == tls::ACME_TLS_ALPN);
-    if !acme {
-        if let Some(pool) = plan.passthrough_for(sni) {
-            let client = tls::Prefixed::new(prefix, stream);
-            passthrough(client, peer, pool, &limits, &cancel).await;
-            return;
-        }
+    if !acme && let Some(pool) = plan.passthrough_for(sni) {
+        let client = tls::Prefixed::new(prefix, stream);
+        passthrough(client, peer, pool, &limits, &cancel).await;
+        return;
     }
     if !acme && !plan.terminates(sni) {
         debug!(client = %peer, sni = ?sni, "no interface serves this name");
+        ctx.http
+            .abuse
+            .report(peer.ip(), crate::abuse::Signal::UnknownHost);
         return;
     }
     let client = tls::Prefixed::new(prefix, stream);
@@ -409,6 +419,9 @@ async fn handle_tls(
         Ok(Ok(s)) => s,
         Ok(Err(e)) => {
             debug!(client = %peer, sni = ?sni, "TLS handshake failed: {e}");
+            ctx.http
+                .abuse
+                .report(peer.ip(), crate::abuse::Signal::HandshakeFailure);
             return;
         }
         Err(_) => return,

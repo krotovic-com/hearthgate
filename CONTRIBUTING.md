@@ -34,11 +34,23 @@ Release builds are static musl binaries made with [cargo-zigbuild](https://githu
 ```sh
 pip install ziglang            # or install zig 0.15+ from your package manager
 cargo install --locked cargo-zigbuild
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest   # .deb and .rpm packages
 scripts/build-release.sh 0.0.0-test                              # all targets
 scripts/build-release.sh 0.0.0-test aarch64-unknown-linux-musl   # just one
 ```
 
-Archives and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs.
+Archives, `.deb` and `.rpm` packages (described in `packaging/nfpm/`), `install.sh` and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs. To check a package, install it in a throwaway VM or container: `apt install ./dist/hearthgate_*_amd64.deb`, then `apt purge hearthgate`.
+
+### Documentation
+
+The documentation site is built from `docs/` with [mdBook](https://rust-lang.github.io/mdBook/) and published to GitHub Pages when `docs/` changes on `main`. Add a new page to `docs/SUMMARY.md`. Preview it with:
+
+```sh
+cargo install --locked mdbook --version 0.4.52
+mdbook serve docs     # http://localhost:3000
+```
+
+Links inside `docs/` stay relative; links to files outside it use their full GitHub URL, because the site only contains `docs/`.
 
 ### Workspace layout
 
@@ -50,6 +62,11 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-proxy` | Listeners, L4 and HTTP proxying, TLS, load balancing, metrics |
 | `crates/hearthgate-acme` | Certificate storage and ACME issuance |
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
+| `crates/hearthgate-firewall` | nftables ruleset, safe apply, blocklist feeds and automatic bans |
+| `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
+| `crates/hearthgate-notify` | Notifications: webhooks and email |
+| `crates/hearthgate-docker` | Managed containers and Compose stacks |
+| `crates/hearthgate-vpn` | WireGuard interface, keys, peer configs and the internal DNS server |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
 | `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |
 
@@ -64,6 +81,24 @@ cargo test -p hearthgate-acme --test pebble
 ```
 
 They expect `pebble` and `pebble-challtestsrv` in `~/go/bin` or on `PATH`, and use ports 14000, 15001 and 15002.
+
+The DNS-01 test (`cargo test -p hearthgate-acme --test dns01`) also needs BIND (`sudo apt install bind9 bind9-dnsutils`): it starts its own `named` on port 18153, updates it with RFC 2136 and has Pebble issue a wildcard certificate from it, on ports 14010 to 15012. The Cloudflare part runs against a fake API and needs nothing.
+
+### Docker tests
+
+`crates/hearthgate-docker/tests/docker.rs` creates, recreates and removes real containers and a Compose stack (all named `hgtest-…`), and is skipped when Docker or the `busybox:1.36` image isn't available. It needs the Docker daemon, the Compose plugin and access to `/var/run/docker.sock`: `cargo test -p hearthgate-docker --test docker`.
+
+### Firewall and VPN tests
+
+`crates/hearthgate-firewall/tests/netns.rs` builds three network namespaces (outside, this host, LAN), loads real rulesets and scans the host from outside. `hearthgate/tests/vpn_netns.rs` starts real WireGuard tunnels from two client namespaces and checks what each peer can reach, and that a removed peer is cut off. They never touch your own host's network, but they need root, `ip` (iproute2), `nft`, `wg` (wireguard-tools), `python3` and the WireGuard kernel module or `wireguard-go`, and are skipped without them. Run them with:
+
+```sh
+cargo test -p hearthgate-firewall --test netns -p hearthgate --test vpn_netns --no-run
+sudo -E env "PATH=$PATH" cargo test -p hearthgate-firewall --test netns
+sudo -E env "PATH=$PATH" cargo test -p hearthgate --test vpn_netns
+```
+
+The dashboard has one more end-to-end test, skipped by default, that turns the firewall on for real and checks that the dashboard confirms the change. Run it only as root in a throwaway machine or container: `HEARTHGATE_E2E_FIREWALL=1 npm run test:e2e`.
 
 ### Docker discovery
 
@@ -81,6 +116,18 @@ cd dashboard && npm test       # if you touched the dashboard or the API
 ```
 
 `npm test` runs svelte-check, the component tests, a build, and the Playwright end-to-end tests, which start a real Hearthgate (built with `cargo build`) and check every page with axe for WCAG AA. Playwright needs Chromium: `npx playwright install chromium`.
+
+If you changed dependencies, run `cargo deny check` (install it with `cargo install cargo-deny`): it fails on any RustSec advisory, a license that isn't compatible with MIT, or a source other than crates.io. An advisory that doesn't affect Hearthgate goes in `deny.toml` under `ignore`, with the reason.
+
+If you touched code that parses untrusted input (anything from the network, a feed or an import), run the fuzzers for a few minutes:
+
+```sh
+rustup toolchain install nightly
+cargo install cargo-fuzz
+scripts/fuzz.sh 120              # seconds per target; or name targets after it
+```
+
+Targets live in `fuzz/fuzz_targets`, with starting inputs in `fuzz/seeds`. A crash leaves its input in `fuzz/artifacts/TARGET/`; reproduce it with `cargo +nightly fuzz run TARGET fuzz/artifacts/TARGET/crash-…` from `fuzz/`, and add a regular test for it with the fix. New parsers of untrusted input should get a target. See [the threat model](docs/THREAT_MODEL.md) for what is untrusted.
 
 If you touched the build or release scripts, also run `scripts/build-release.sh 0.0.0-test` and `scripts/next-version.sh`. When CI does fail, fix everything it reports in one push rather than one failure at a time.
 
@@ -111,7 +158,7 @@ Commit types decide the next version, so pick them carefully:
 | `style` | Formatting only | none |
 | `chore` | Anything else that is not user-facing | none |
 
-Mark breaking changes with `!` after the type (`feat!: drop the v1 config format`) or a `BREAKING CHANGE:` footer that explains the migration. While Hearthgate is `0.x`, a breaking change bumps the minor version.
+Mark breaking changes with `!` after the type (`feat!: drop the v1 config format`) or a `BREAKING CHANGE:` footer that explains the migration. While Hearthgate was `0.x`, a breaking change bumped the minor version; from 1.0 it bumps the major version. A `Release-As: X.Y.Z` footer sets the next version exactly, when it is newer than the last release.
 
 Useful scopes match the main areas: `proxy`, `tls`, `vpn`, `dns`, `firewall`, `upnp`, `docker`, `dashboard`, `ai`, `config`, `cli`, `systemd`.
 
@@ -155,6 +202,8 @@ You don't release anything by hand. On every push to `main`, the release workflo
 The version in `Cargo.toml` stays `0.0.0-dev`. Release builds get the real version from the `HEARTHGATE_VERSION` environment variable, so no version-bump commits are needed.
 
 To preview what the next release would be, run `scripts/next-version.sh` locally.
+
+After each release, add an upgrade fixture for it, so every later version is tested against data that release wrote: `scripts/make-upgrade-fixture.sh X.Y.Z`, then commit `hearthgate/tests/upgrade/vX.Y.Z` (its keys and tokens are throwaway). `cargo test -p hearthgate --test upgrade` opens each fixture with the current code, and checks the state, history, certificates, admin token, dashboard login and a backup round trip. A database migration must never break it; add a new migration rather than changing a released one.
 
 ## Brand assets
 

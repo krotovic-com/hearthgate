@@ -35,7 +35,13 @@ use crate::auth::Principal;
         crate::account::session_info, crate::account::setup, crate::account::login,
         crate::account::logout, crate::account::change_password, crate::account::totp_begin,
         crate::account::totp_enable, crate::account::totp_disable, crate::account::list_tokens,
-        crate::account::create_token, crate::account::delete_token
+        crate::account::create_token, crate::account::delete_token,
+        crate::firewall::info, crate::firewall::recent, crate::firewall::confirm,
+        crate::firewall::ban, crate::firewall::unban, crate::firewall::router,
+        crate::vpn::info, crate::vpn::peer_config,
+        crate::docker::info, crate::docker::restart, crate::docker::update_container,
+        crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
+        crate::docker::updates, crate::notify::test
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -47,13 +53,22 @@ use crate::auth::Principal;
         crate::account::ApiTokenInfo, crate::account::NewToken, crate::account::CreatedToken,
         HostInfo, PreviewResponse, DiffResponse, crate::live::Rate, crate::live::TrafficBucket,
         crate::live::LogLine, crate::access::AccessSettings, crate::access::AccessMode,
-        crate::access::AccessInfo, crate::access::Resolved
+        crate::access::AccessInfo, crate::access::Resolved, FirewallSummary,
+        crate::firewall::FirewallInfo, crate::firewall::PendingInfo,
+        crate::firewall::DroppedInfo, crate::firewall::FeedInfo, crate::firewall::BanInfo,
+        crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
+        crate::firewall::RouterInfo, crate::firewall::MappingInfo,
+        crate::vpn::VpnInfo, crate::vpn::VpnPeerInfo, crate::vpn::DnsName, crate::vpn::PeerConfigRequest,
+        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo, crate::notify::TestResult
     )),
     modifiers(&Security),
     tags(
         (name = "hearthgate"),
         (name = "auth", description = "Dashboard login and API tokens"),
-        (name = "settings", description = "Settings kept outside the desired state")
+        (name = "settings", description = "Settings kept outside the desired state"),
+        (name = "firewall", description = "Firewall status, bans and change confirmation"),
+        (name = "vpn", description = "VPN status and new peer configurations"),
+        (name = "docker", description = "Managed containers and stacks")
     )
 )]
 pub struct ApiDoc;
@@ -108,6 +123,40 @@ pub fn router(state: ApiState) -> Router {
             "/api/v1/settings/admin-access",
             get(crate::access::get_access).put(crate::access::put_access),
         )
+        .route("/api/v1/vpn", get(crate::vpn::info))
+        .route("/api/v1/notifications/test", post(crate::notify::test))
+        .route("/api/v1/docker", get(crate::docker::info))
+        .route("/api/v1/docker/updates", get(crate::docker::updates))
+        .route(
+            "/api/v1/docker/containers/{name}/restart",
+            post(crate::docker::restart),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/update",
+            post(crate::docker::update_container),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/logs",
+            get(crate::docker::logs),
+        )
+        .route(
+            "/api/v1/docker/containers/{name}/stats",
+            get(crate::docker::stats),
+        )
+        .route(
+            "/api/v1/docker/stacks/{name}/update",
+            post(crate::docker::update_stack),
+        )
+        .route("/api/v1/vpn/peer-config", post(crate::vpn::peer_config))
+        .route("/api/v1/firewall", get(crate::firewall::info))
+        .route("/api/v1/router", get(crate::firewall::router))
+        .route("/api/v1/firewall/recent", get(crate::firewall::recent))
+        .route("/api/v1/firewall/confirm", post(crate::firewall::confirm))
+        .route("/api/v1/firewall/bans", post(crate::firewall::ban))
+        .route(
+            "/api/v1/firewall/bans/{address}",
+            axum::routing::delete(crate::firewall::unban),
+        )
         .route("/api/v1/revisions/{id}/rollback", post(rollback))
         .route("/api/v1/certificates", get(certificates))
         .route("/api/v1/openapi.json", get(openapi))
@@ -119,6 +168,10 @@ pub fn router(state: ApiState) -> Router {
             crate::auth::authenticate,
         ))
         .layer(axum::middleware::from_fn(crate::ui::security_headers))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::firewall::close_while_pending,
+        ))
         .with_state(state)
 }
 
@@ -315,6 +368,15 @@ pub struct StatusResponse {
     /// Things that need attention.
     pub problems: Vec<String>,
     pub host: HostInfo,
+    /// Whether the firewall is installed, and a change waiting for
+    /// confirmation.
+    pub firewall: FirewallSummary,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FirewallSummary {
+    pub installed: bool,
+    pub pending: Option<crate::firewall::PendingInfo>,
 }
 
 /// Gateway status: listeners, upstream health and problems.
@@ -358,7 +420,17 @@ pub(crate) async fn status_snapshot(state: &ApiState) -> Result<StatusResponse, 
             rate: state.live.rate(&u.service, u.port),
         })
         .collect();
+    let fw = state.perimeter.status();
     Ok(StatusResponse {
+        firewall: FirewallSummary {
+            installed: fw.installed,
+            pending: fw
+                .pending
+                .map(|(revision, seconds_left)| crate::firewall::PendingInfo {
+                    revision,
+                    seconds_left,
+                }),
+        },
         version: crate_version(),
         revision: runtime.revision,
         latest_revision: latest,

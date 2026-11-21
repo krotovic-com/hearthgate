@@ -26,6 +26,7 @@ use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Bootstrap;
+use crate::firewall::FirewallCtl;
 
 /// How often the store is checked for a new revision.
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -111,24 +112,120 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     let runtime = Arc::new(RwLock::new(RuntimeInfo::default()));
     let api_changed = Arc::new(Notify::new());
     let live = Arc::new(hearthgate_api::Live::new(logs));
-    hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
-    if bootstrap.admin.disabled() {
-        info!("admin API is off (admin.listen = [])");
-    } else {
-        start_admin(
-            &bootstrap,
-            &store,
-            &gateway,
-            &certs,
-            &runtime,
-            &api_changed,
-            &live,
-            &stop,
-        )
-        .await?;
+    let perimeter = Arc::new(hearthgate_firewall::Perimeter::new(
+        hearthgate_firewall::Nft::default(),
+    ));
+    let router = Arc::new(hearthgate_upnp::Router::default());
+    let vpn_runtime = Arc::new(hearthgate_vpn::Runtime::new(
+        hearthgate_vpn::Device::new(hearthgate_vpn::INTERFACE, hearthgate_vpn::Tools::default()),
+        Some(bootstrap.data_dir.join("vpn")),
+    ));
+    let docker_manager = Arc::new(hearthgate_docker::Manager::new(
+        (bootstrap.docker.enabled && bootstrap.docker.manage)
+            .then_some(bootstrap.docker.socket.as_path()),
+        &bootstrap.data_dir,
+    ));
+    let (docker_state, docker_rx) = watch::channel(None);
+    if docker_manager.enabled() {
+        tokio::spawn(crate::docker::run(
+            Arc::clone(&docker_manager),
+            docker_rx,
+            stop.clone(),
+        ));
     }
+    let (notifications, notification_settings) =
+        watch::channel(Arc::new(hearthgate_model::Notifications::default()));
+    if let Some(events) = hearthgate_notify::channel() {
+        tokio::spawn(hearthgate_notify::run(
+            events,
+            notification_settings,
+            stop.clone(),
+        ));
+    }
+    tokio::spawn(crate::events::watch_health(
+        Arc::clone(&gateway),
+        stop.clone(),
+    ));
+    if bootstrap.updates.check {
+        tokio::spawn(crate::update::run(stop.clone()));
+    }
+    tokio::spawn(crate::backup::run(
+        bootstrap.data_dir.clone(),
+        bootstrap.backup.clone(),
+        stop.clone(),
+    ));
+    hearthgate_api::live::spawn_sampler(Arc::clone(&live), Arc::clone(&gateway), stop.clone());
+    let access = if bootstrap.admin.disabled() {
+        info!("admin API is off (admin.listen = [])");
+        None
+    } else {
+        Some(
+            start_admin(
+                &bootstrap,
+                &store,
+                &gateway,
+                &certs,
+                &runtime,
+                &api_changed,
+                &live,
+                &perimeter,
+                &router,
+                &vpn_runtime,
+                &docker_manager,
+                &stop,
+            )
+            .await?,
+        )
+    };
 
+    let (firewall_tx, firewall_rx) = watch::channel(hearthgate_model::Firewall::default());
+    tokio::spawn(hearthgate_firewall::feeds::run(
+        Arc::clone(&perimeter),
+        bootstrap.data_dir.join("blocklists"),
+        firewall_rx.clone(),
+        stop.clone(),
+    ));
+    {
+        // Abuse reports from the proxy feed the automatic bans.
+        let (signal_tx, mut signal_rx) = tokio::sync::mpsc::channel(4096);
+        gateway.abuse().connect(signal_tx);
+        let (report_tx, report_rx) = tokio::sync::mpsc::channel(4096);
+        tokio::spawn(async move {
+            while let Some((ip, signal)) = signal_rx.recv().await {
+                let signal: hearthgate_proxy::abuse::Signal = signal;
+                if report_tx
+                    .send((ip, signal.points(), signal.describe()))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
+        tokio::spawn(hearthgate_firewall::bans::run(
+            Arc::clone(&perimeter),
+            report_rx,
+            firewall_rx,
+            stop.clone(),
+        ));
+    }
+    let (upnp_tx, upnp_rx) = watch::channel(hearthgate_upnp::Wanted::default());
+    let upnp_task = tokio::spawn(hearthgate_upnp::run(
+        Arc::clone(&router),
+        upnp_rx,
+        hearthgate_upnp::Options::default(),
+        stop.clone(),
+    ));
+    let (vpn, dns_settings) = crate::vpn::VpnCtl::new(Arc::clone(&vpn_runtime));
+    tokio::spawn(hearthgate_vpn::dns::run(dns_settings, stop.clone()));
+    let mut firewall = FirewallCtl::new(Arc::clone(&perimeter), Arc::clone(&store), access.clone());
+    firewall.recover().await;
     let mut daemon = Daemon {
+        firewall,
+        vpn,
+        access,
+        firewall_settings: firewall_tx,
+        upnp: upnp_tx,
         health: HealthChecker::default(),
         store,
         certs,
@@ -136,6 +233,9 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         acme: acme_tx,
         acme_problems,
         containers: containers.clone(),
+        docker: docker_manager,
+        docker_state,
+        notifications,
         runtime,
         cert_generation: String::new(),
         cert_specs: Vec::new(),
@@ -164,7 +264,12 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
-            _ = tick.tick() => daemon.reconcile(false).await,
+            _ = tick.tick() => {
+                // A rollback is a new revision, which reconcile picks up.
+                daemon.firewall.tick().await;
+                let vpn_check = daemon.vpn.check().await;
+                daemon.reconcile(vpn_check).await;
+            }
             () = api_changed.notified() => daemon.reconcile(false).await,
             () = containers.changed.notified() => {
                 info!("container addresses changed");
@@ -181,6 +286,9 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     }
     notify(&[NotifyState::Stopping]);
     stop.cancel();
+    // Give the router a moment to drop its forwards.
+    let _ = tokio::time::timeout(Duration::from_secs(10), upnp_task).await;
+    daemon.vpn.stop().await;
     daemon.health.stop();
     info!(
         "stopping; open connections get {:?} to finish",
@@ -191,6 +299,14 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
 }
 
 struct Daemon {
+    firewall: FirewallCtl,
+    vpn: crate::vpn::VpnCtl,
+    /// The dashboard's listeners, which follow the VPN address.
+    access: Option<Arc<hearthgate_api::AccessControl>>,
+    /// Firewall settings for the blocklist and ban tasks.
+    firewall_settings: watch::Sender<hearthgate_model::Firewall>,
+    /// Ports the router should forward.
+    upnp: watch::Sender<hearthgate_upnp::Wanted>,
     health: HealthChecker,
     store: Arc<Store>,
     certs: Arc<CertStore>,
@@ -200,6 +316,11 @@ struct Daemon {
     /// Latest ACME failure per interface.
     acme_problems: Arc<Mutex<BTreeMap<String, String>>>,
     containers: Containers,
+    docker: Arc<hearthgate_docker::Manager>,
+    /// The state the Docker task works towards.
+    docker_state: watch::Sender<Option<Arc<DesiredState>>>,
+    /// Where notifications go.
+    notifications: watch::Sender<Arc<hearthgate_model::Notifications>>,
     runtime: Arc<RwLock<RuntimeInfo>>,
     /// Last seen certificate store generation.
     cert_generation: String,
@@ -249,6 +370,41 @@ impl Daemon {
         self.cert_specs.clone_from(&plan.certs);
         self.load_certificates();
         let errors = self.gateway.apply(&plan).await;
+        self.docker_state.send_if_modified(|current| {
+            let changed = current
+                .as_ref()
+                .is_none_or(|c| c.containers != state.containers || c.stacks != state.stacks);
+            if changed {
+                *current = Some(Arc::new(state.clone()));
+            }
+            changed
+        });
+        self.notifications.send_if_modified(|n| {
+            let changed = **n != state.notifications;
+            if changed {
+                *n = Arc::new(state.notifications.clone());
+            }
+            changed
+        });
+        self.firewall.vpn = self.vpn.reconcile(&state, &self.containers).await;
+        self.firewall
+            .reconcile(&state, id, self.applied.is_none())
+            .await;
+        if let Some(access) = &self.access {
+            // The dashboard is reachable over the VPN too, at its address.
+            access.refresh(&self.store).await;
+        }
+        let wanted = upnp_wanted(&state);
+        self.upnp.send_if_modified(|w| {
+            let changed = *w != wanted;
+            *w = wanted;
+            changed
+        });
+        self.firewall_settings.send_if_modified(|fw| {
+            let changed = *fw != state.firewall;
+            fw.clone_from(&state.firewall);
+            changed
+        });
         self.health.update(
             health::jobs(&state, self.gateway.upstreams()),
             self.gateway.upstreams(),
@@ -287,6 +443,9 @@ impl Daemon {
 
     fn publish_runtime(&self) {
         let mut problems = self.bind_errors.clone();
+        problems.extend(self.firewall.problem.iter().cloned());
+        problems.extend(self.vpn.problems());
+        problems.extend(self.docker.status().problems);
         problems.extend(self.cert_notes.iter().cloned());
         problems.extend(
             self.acme_problems
@@ -321,6 +480,29 @@ impl Daemon {
     }
 }
 
+/// The ports the router should forward: every public port.
+fn upnp_wanted(state: &DesiredState) -> hearthgate_upnp::Wanted {
+    use hearthgate_upnp::Protocol;
+    let mut ports = Vec::new();
+    for listener in state.interfaces.iter().flat_map(|i| &i.listeners) {
+        if listener.tcp() {
+            ports.push((listener.port, Protocol::Tcp));
+        }
+        if listener.udp() {
+            ports.push((listener.port, Protocol::Udp));
+        }
+    }
+    if state.vpn.enabled {
+        ports.push((state.vpn.port, Protocol::Udp));
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    hearthgate_upnp::Wanted {
+        enabled: state.router.upnp,
+        ports,
+    }
+}
+
 /// Issues and renews automatic certificates in the background. New
 /// certificates land in the store, and the daemon's next tick loads them.
 async fn acme_loop(
@@ -349,6 +531,7 @@ async fn acme_loop(
                         next = next.min(until.saturating_duration_since(std::time::Instant::now()));
                     }
                     Outcome::Failed(e) => {
+                        crate::events::certificate_failed(&interface, &e);
                         problems.insert(interface, e);
                     }
                     Outcome::Valid(_) | Outcome::Issued(_) => {
@@ -376,8 +559,12 @@ async fn start_admin(
     runtime: &Arc<RwLock<RuntimeInfo>>,
     changed: &Arc<Notify>,
     live: &Arc<hearthgate_api::Live>,
+    perimeter: &Arc<hearthgate_firewall::Perimeter>,
+    router: &Arc<hearthgate_upnp::Router>,
+    vpn: &Arc<hearthgate_vpn::Runtime>,
+    docker: &Arc<hearthgate_docker::Manager>,
     stop: &CancellationToken,
-) -> Result<()> {
+) -> Result<Arc<hearthgate_api::AccessControl>> {
     use hearthgate_api::access::{Resolved, Source, TlsMode};
     let admin = &bootstrap.admin;
     let token = hearthgate_api::load_or_create_token(&bootstrap.data_dir)
@@ -428,6 +615,10 @@ async fn start_admin(
         auth: Arc::default(),
         access: Arc::clone(&access),
         live: Arc::clone(live),
+        perimeter: Arc::clone(perimeter),
+        router: Arc::clone(router),
+        vpn: Arc::clone(vpn),
+        docker: Arc::clone(docker),
     };
     let wanted = {
         let store = Arc::clone(store);
@@ -457,5 +648,5 @@ async fn start_admin(
              (`hearthgate setup-code` shows it again)"
         );
     }
-    Ok(())
+    Ok(access)
 }

@@ -18,6 +18,15 @@ hearthgate-proxy.workspace = true
 hearthgate-acme.workspace = true
 hearthgate-services.workspace = true
 hearthgate-api.workspace = true
+hearthgate-firewall.workspace = true
+hearthgate-upnp.workspace = true
+hearthgate-vpn.workspace = true
+hearthgate-docker.workspace = true
+hearthgate-notify.workspace = true
+serde_json.workspace = true
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+tempfile.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 ipnet.workspace = true

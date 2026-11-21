@@ -48,6 +48,7 @@ export interface StatusResponse {
   upstreams: UpstreamStatus[];
   problems: string[];
   host: HostInfo;
+  firewall?: { installed: boolean; pending: PendingInfo | null };
 }
 
 // Desired state, as in the OpenAPI document. Optional fields are filled
@@ -70,6 +71,8 @@ export interface Interface {
   listeners: Listener[];
   bind?: string[];
   certificate?: string | null;
+  /** New connections per second from one client, enforced by the firewall. */
+  rate_limit?: number | null;
 }
 
 export interface HealthCheck {
@@ -115,16 +118,271 @@ export interface AcmeSettings {
   staging?: boolean;
   directory?: string | null;
   directory_root?: string | null;
-  challenge?: 'http-01' | 'tls-alpn-01' | null;
+  challenge?: 'http-01' | 'tls-alpn-01' | 'dns-01' | null;
   renew_before?: string;
+  dns?: AcmeDns | null;
+}
+
+export type DnsProvider = 'cloudflare' | 'rfc2136';
+export type TsigAlgorithm = 'hmac-sha256' | 'hmac-sha384' | 'hmac-sha512';
+
+/** Where dns-01 challenges set TXT records. Secrets stay in files. */
+export interface AcmeDns {
+  provider: DnsProvider;
+  api_token_file?: string | null;
+  api_url?: string | null;
+  server?: string | null;
+  zone?: string | null;
+  key_name?: string | null;
+  key_algorithm?: TsigAlgorithm;
+  key_file?: string | null;
+  propagation?: string;
+}
+
+export type RuleAction = 'allow' | 'deny';
+
+export interface FirewallRule {
+  name: string;
+  action: RuleAction;
+  /** Networks such as "203.0.113.0/24". Empty means any source. */
+  sources?: string[];
+  /** Ports (numbers) or ranges ("8000-8100"). Empty means every port. */
+  ports?: (number | string)[];
+  protocol?: Protocol;
+  comment?: string;
+}
+
+export interface Blocklist {
+  name: string;
+  url: string;
+  /** For example "12h". */
+  refresh?: string;
+  enabled?: boolean;
+}
+
+export interface AutoBan {
+  enabled: boolean;
+  threshold: number;
+  window: string;
+  ban_time: string;
+}
+
+export interface FirewallSettings {
+  enabled: boolean;
+  allow_lan: boolean;
+  allow_ping: boolean;
+  allow_docker_ports: boolean;
+  rules?: FirewallRule[];
+  allow?: string[];
+  block?: string[];
+  blocklists?: Blocklist[];
+  countries?: string[];
+  auto_ban: AutoBan;
+}
+
+export interface RouterSettings {
+  upnp: boolean;
+}
+
+/** `'all'`, or the names of the services a peer may reach. */
+export type Access = 'all' | string[];
+
+export interface Peer {
+  name: string;
+  public_key: string;
+  address: string;
+  access?: Access;
+}
+
+export interface VpnSettings {
+  enabled?: boolean;
+  port?: number;
+  subnet?: string;
+  endpoint?: string;
+  peers?: Peer[];
+}
+
+export interface DnsSettings {
+  enabled?: boolean;
+  zone?: string;
+  lan?: boolean;
+  upstream?: string[];
+}
+
+export interface VpnPeerInfo {
+  name: string;
+  address: string;
+  public_key: string;
+  endpoint: string | null;
+  latest_handshake: number | null;
+  online: boolean;
+  rx_bytes: number;
+  tx_bytes: number;
+}
+
+export interface VpnInfo {
+  enabled: boolean;
+  running: boolean;
+  backend: 'kernel' | 'userspace' | null;
+  interface: string;
+  public_key: string | null;
+  endpoint: string | null;
+  address: string;
+  subnet: string;
+  port: number;
+  problems: string[];
+  peers: VpnPeerInfo[];
+  dns: string[];
+  names: { name: string; addresses: string[] }[];
+}
+
+export interface PeerConfigResponse {
+  public_key: string;
+  address: string;
+  config: string;
+  qr_svg: string;
+}
+
+export type RestartPolicy = 'no' | 'always' | 'unless-stopped' | 'on-failure';
+
+export interface ManagedContainer {
+  name: string;
+  image: string;
+  running?: boolean;
+  command?: string[];
+  env?: Record<string, string>;
+  volumes?: string[];
+  publish?: string[];
+  restart?: RestartPolicy;
+}
+
+export interface Stack {
+  name: string;
+  compose: string;
+  env?: Record<string, string>;
+  running?: boolean;
+}
+
+export interface DockerContainerInfo {
+  name: string;
+  owner: { kind: 'container' } | { kind: 'stack'; stack: string; service: string };
+  image: string;
+  state: string;
+  status: string;
+  health: string | null;
+  address: string | null;
+  created: number | null;
+}
+
+export interface DockerInfo {
+  enabled: boolean;
+  available: boolean;
+  error: string | null;
+  subnet: string | null;
+  containers: DockerContainerInfo[];
+  stacks: { name: string; running: number; total: number; error: string | null }[];
+  problems: string[];
+}
+
+export interface ContainerLogLine {
+  time: string;
+  stderr: boolean;
+  text: string;
+}
+
+export interface ContainerStats {
+  cpu_percent: number;
+  memory_bytes: number;
+  memory_limit: number;
+  restarts: number;
+  started_at: string | null;
+}
+
+export interface ImageUpdate {
+  image: string;
+  used_by: string[];
+  update_available: boolean;
+  error: string | null;
 }
 
 export interface DesiredState {
+  containers?: ManagedContainer[];
+  stacks?: Stack[];
+  vpn?: VpnSettings;
+  dns?: DnsSettings;
   interfaces?: Interface[];
   services?: Service[];
   routes?: Route[];
   acme?: AcmeSettings;
   limits?: Record<string, string | number>;
+  firewall?: FirewallSettings;
+  router?: RouterSettings;
+  notifications?: NotificationSettings;
+}
+
+export type EventKind = 'certificates' | 'health' | 'security' | 'backups' | 'updates';
+
+export interface Webhook {
+  name: string;
+  url: string;
+  format?: 'json' | 'ntfy';
+}
+
+export interface EmailSettings {
+  server: string;
+  security?: 'starttls' | 'tls' | 'none';
+  username?: string | null;
+  password_file?: string | null;
+  from: string;
+  to: string[];
+}
+
+export interface NotificationSettings {
+  /** Empty or missing: every kind. */
+  events?: EventKind[];
+  webhooks?: Webhook[];
+  email?: EmailSettings | null;
+}
+
+export interface NotificationTestResult {
+  target: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface PendingInfo {
+  revision: number;
+  seconds_left: number;
+}
+
+export interface FirewallInfo {
+  installed: boolean;
+  error: string | null;
+  pending: PendingInfo | null;
+  dropped: { total: number; blocklist: number; ban: number; policy: number; ratelimit: number };
+  feed_entries: number;
+  feeds: { name: string; entries: number; updated: number | null; error: string | null }[];
+  bans: { address: string; seconds_left: number }[];
+}
+
+export interface RecentDrop {
+  source: string;
+  protocol: string;
+  port: number;
+  reason: 'blocklist' | 'ban' | 'policy' | 'rate-limit' | string;
+  packets: number;
+  last_seen_secs: number;
+}
+
+export interface RouterInfo {
+  enabled: boolean;
+  method: 'upnp' | 'nat-pmp' | null;
+  router: string | null;
+  local_ip: string | null;
+  public_ip: string | null;
+  double_nat: boolean;
+  mappings: { port: number; protocol: string; active: boolean; error: string | null }[];
+  error: string | null;
 }
 
 export interface RevisionInfo {
@@ -276,6 +534,8 @@ export const api = {
     request<SessionInfo>('POST', '/api/v1/auth/login', { username, password, code: code || null }),
   logout: () => request<void>('POST', '/api/v1/auth/logout'),
   status: () => request<StatusResponse>('GET', '/api/v1/status'),
+  testNotifications: (settings: NotificationSettings) =>
+    request<NotificationTestResult[]>('POST', '/api/v1/notifications/test', settings),
   state: () => request<StateResponse>('GET', '/api/v1/state'),
   apply: (state: DesiredState, message: string) =>
     request<ApplyResponse>('PUT', '/api/v1/state', { state, message }),
@@ -299,4 +559,28 @@ export const api = {
   tokens: () => request<ApiTokenInfo[]>('GET', '/api/v1/tokens'),
   createToken: (name: string) => request<CreatedToken>('POST', '/api/v1/tokens', { name }),
   deleteToken: (id: number) => request<void>('DELETE', `/api/v1/tokens/${id}`),
+  firewall: () => request<FirewallInfo>('GET', '/api/v1/firewall'),
+  recentDrops: () => request<RecentDrop[]>('GET', '/api/v1/firewall/recent'),
+  confirmFirewall: () => request<void>('POST', '/api/v1/firewall/confirm'),
+  ban: (address: string, duration?: string) =>
+    request<void>('POST', '/api/v1/firewall/bans', { address, duration: duration || null }),
+  unban: (address: string) => request<void>('DELETE', `/api/v1/firewall/bans/${encodeURIComponent(address)}`),
+  router: () => request<RouterInfo>('GET', '/api/v1/router'),
+  vpn: () => request<VpnInfo>('GET', '/api/v1/vpn'),
+  docker: () => request<DockerInfo>('GET', '/api/v1/docker'),
+  restartContainer: (name: string) =>
+    request<void>('POST', `/api/v1/docker/containers/${encodeURIComponent(name)}/restart`),
+  updateContainer: (name: string) =>
+    request<void>('POST', `/api/v1/docker/containers/${encodeURIComponent(name)}/update`),
+  updateStack: (name: string) => request<void>('POST', `/api/v1/docker/stacks/${encodeURIComponent(name)}/update`),
+  containerLogs: (name: string, tail = 200, search = '') =>
+    request<ContainerLogLine[]>(
+      'GET',
+      `/api/v1/docker/containers/${encodeURIComponent(name)}/logs?tail=${tail}&search=${encodeURIComponent(search)}`,
+    ),
+  containerStats: (name: string) =>
+    request<ContainerStats>('GET', `/api/v1/docker/containers/${encodeURIComponent(name)}/stats`),
+  imageUpdates: () => request<ImageUpdate[]>('GET', '/api/v1/docker/updates'),
+  peerConfig: (body: { name: string; access: Access; state: DesiredState }) =>
+    request<PeerConfigResponse>('POST', '/api/v1/vpn/peer-config', body),
 };

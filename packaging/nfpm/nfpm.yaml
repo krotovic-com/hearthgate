@@ -1,0 +1,63 @@
+# Debian and RPM packages, built by scripts/build-release.sh with nfpm.
+# ${VERSION} and ${ARCH} (Go architecture names) come from the environment;
+# the binary and unit file are staged in target/package/.
+name: hearthgate
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: net
+priority: optional
+maintainer: Hearthgate contributors <https://github.com/krotovic-com/hearthgate>
+description: |
+  Home server gateway: the single, secure entry point from the internet.
+  Public interfaces with automatic certificates, load balancing, an
+  nftables firewall, a WireGuard VPN with internal DNS, managed Docker
+  containers and a LAN-only dashboard.
+vendor: Hearthgate
+homepage: https://github.com/krotovic-com/hearthgate
+license: MIT
+
+recommends:
+  - nftables
+  - wireguard-tools
+suggests:
+  - docker.io
+
+contents:
+  - src: target/package/hearthgate
+    dst: /usr/bin/hearthgate
+    file_info:
+      mode: 0755
+  - src: target/package/hearthgate.service
+    dst: /usr/lib/systemd/system/hearthgate.service
+    file_info:
+      mode: 0644
+  - src: packaging/systemd/hearthgate.sysusers
+    dst: /usr/lib/sysusers.d/hearthgate.conf
+    file_info:
+      mode: 0644
+  # Not in /usr/lib/sysctl.d: forwarding stays off until the person turns
+  # it on for the VPN (see the guide).
+  - src: packaging/sysctl/60-hearthgate.conf
+    dst: /usr/share/hearthgate/60-hearthgate.conf
+    file_info:
+      mode: 0644
+  - src: packaging/hearthgate.toml
+    dst: /etc/hearthgate/hearthgate.toml
+    type: config|noreplace
+    file_info:
+      mode: 0644
+  - src: packaging/examples/state.toml
+    dst: /usr/share/doc/hearthgate/examples/state.toml
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/hearthgate/LICENSE
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/nfpm/postinstall.sh
+  preremove: packaging/nfpm/preremove.sh
+  postremove: packaging/nfpm/postremove.sh

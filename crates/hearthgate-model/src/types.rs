@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::{Container, Dns, Firewall, Notifications, Router, Stack, Vpn};
+
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -25,6 +27,27 @@ pub struct DesiredState {
     /// Routes connecting interface listeners to services.
     #[serde(default)]
     pub routes: Vec<Route>,
+    /// Inbound firewall, blocklists and automatic bans.
+    #[serde(default, skip_serializing_if = "Firewall::is_default")]
+    pub firewall: Firewall,
+    /// Router port forwarding.
+    #[serde(default, skip_serializing_if = "Router::is_default")]
+    pub router: Router,
+    /// The built-in WireGuard VPN and its peers.
+    #[serde(default, skip_serializing_if = "Vpn::is_default")]
+    pub vpn: Vpn,
+    /// Internal DNS for VPN peers.
+    #[serde(default, skip_serializing_if = "Dns::is_default")]
+    pub dns: Dns,
+    /// Docker containers Hearthgate runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub containers: Vec<Container>,
+    /// Compose stacks Hearthgate runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stacks: Vec<Stack>,
+    /// Where certificate, health, security, backup and update events go.
+    #[serde(default, skip_serializing_if = "Notifications::is_default")]
+    pub notifications: Notifications,
 }
 
 /// Settings for automatic certificates (ACME).
@@ -49,7 +72,7 @@ pub struct AcmeSettings {
     #[serde(default)]
     pub accept_terms: bool,
     /// Renew a certificate when it has less than this long left.
-    #[serde(default = "defaults::renew_before", with = "humantime_serde")]
+    #[serde(default = "defaults::renew_before", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub renew_before: Duration,
     /// Challenge type. By default `http-01` when the interface has an
@@ -61,6 +84,79 @@ pub struct AcmeSettings {
     /// for example a home CA or Pebble in tests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directory_root: Option<String>,
+    /// The DNS provider that answers `dns-01` challenges.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns: Option<AcmeDns>,
+}
+
+/// Where `dns-01` challenges set their `_acme-challenge` TXT records.
+/// Secrets are read from files, so they never appear in the state, its
+/// history or exports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AcmeDns {
+    pub provider: DnsProvider,
+    /// Cloudflare: file holding an API token with the Zone, DNS, Edit
+    /// permission for the zones of your domains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_token_file: Option<String>,
+    /// Cloudflare: API base URL (for tests).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_url: Option<String>,
+    /// RFC 2136: the DNS server that accepts updates, as `host:port`
+    /// (port 53 when left out).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    /// RFC 2136: the zone to update, such as `example.com`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<String>,
+    /// RFC 2136: name of the TSIG key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_name: Option<String>,
+    /// RFC 2136: TSIG algorithm.
+    #[serde(default, skip_serializing_if = "TsigAlgorithm::is_default")]
+    pub key_algorithm: TsigAlgorithm,
+    /// RFC 2136: file holding the TSIG secret, base64 encoded (as in the
+    /// `secret` line of a BIND key file, or the whole key file).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_file: Option<String>,
+    /// How long to wait after setting the records before the CA checks
+    /// them, for the provider's DNS servers to pick them up.
+    #[serde(default = "defaults::dns_propagation", with = "crate::duration::serde")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "30s"))]
+    pub propagation: std::time::Duration,
+}
+
+/// A DNS provider for `dns-01` challenges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum DnsProvider {
+    Cloudflare,
+    /// Dynamic DNS updates signed with TSIG (BIND, Knot, PowerDNS and
+    /// many others).
+    Rfc2136,
+}
+
+/// TSIG algorithm for RFC 2136 updates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum TsigAlgorithm {
+    #[default]
+    #[serde(rename = "hmac-sha256")]
+    HmacSha256,
+    #[serde(rename = "hmac-sha384")]
+    HmacSha384,
+    #[serde(rename = "hmac-sha512")]
+    HmacSha512,
+}
+
+impl TsigAlgorithm {
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// ACME challenge type.
@@ -71,6 +167,10 @@ pub enum AcmeChallenge {
     Http01,
     #[serde(rename = "tls-alpn-01")]
     TlsAlpn01,
+    /// A TXT record set through `acme.dns`. Works for wildcard domains and
+    /// without any port open to the internet.
+    #[serde(rename = "dns-01")]
+    Dns01,
 }
 
 impl Default for AcmeSettings {
@@ -83,6 +183,7 @@ impl Default for AcmeSettings {
             renew_before: defaults::renew_before(),
             challenge: None,
             directory_root: None,
+            dns: None,
         }
     }
 }
@@ -113,28 +214,37 @@ pub struct Limits {
     #[serde(default = "defaults::max_body_bytes")]
     pub max_body_bytes: u64,
     /// Time allowed to receive request headers.
-    #[serde(default = "defaults::header_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::header_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub header_timeout: Duration,
     /// Time allowed for an upstream to answer an HTTP request.
-    #[serde(default = "defaults::upstream_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::upstream_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub upstream_timeout: Duration,
     /// Time allowed to connect to an upstream.
-    #[serde(default = "defaults::connect_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::connect_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub connect_timeout: Duration,
     /// Close idle TCP connections after this long.
-    #[serde(default = "defaults::tcp_idle_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::tcp_idle_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub tcp_idle_timeout: Duration,
     /// Forget UDP client sessions after this long without traffic.
-    #[serde(default = "defaults::udp_session_timeout", with = "humantime_serde")]
+    #[serde(
+        default = "defaults::udp_session_timeout",
+        with = "crate::duration::serde"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub udp_session_timeout: Duration,
     /// How long removed listeners keep serving open connections before they
     /// are closed.
-    #[serde(default = "defaults::drain_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::drain_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub drain_timeout: Duration,
 }
@@ -173,6 +283,11 @@ pub struct Interface {
     pub certificate: Option<String>,
     /// Ports this interface listens on.
     pub listeners: Vec<Listener>,
+    /// New connections per second accepted from one client address across
+    /// this interface's ports, enforced by the firewall. Unset means no
+    /// limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<u32>,
 }
 
 impl Interface {
@@ -327,11 +442,11 @@ pub struct HealthCheck {
     #[serde(default = "defaults::health_path")]
     pub path: String,
     /// Time between checks.
-    #[serde(default = "defaults::health_interval", with = "humantime_serde")]
+    #[serde(default = "defaults::health_interval", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub interval: Duration,
     /// Time allowed for one check.
-    #[serde(default = "defaults::health_timeout", with = "humantime_serde")]
+    #[serde(default = "defaults::health_timeout", with = "crate::duration::serde")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "10s"))]
     pub timeout: Duration,
     /// Consecutive successes before a target is healthy again.
@@ -453,6 +568,9 @@ pub(crate) mod defaults {
 
     pub fn renew_before() -> Duration {
         Duration::from_secs(30 * 24 * 3600)
+    }
+    pub fn dns_propagation() -> Duration {
+        Duration::from_secs(30)
     }
     pub fn max_body_bytes() -> u64 {
         100 * 1024 * 1024

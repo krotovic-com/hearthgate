@@ -2,7 +2,8 @@
 # Builds static Linux binaries for every release target and packages them
 # into dist/. Runs the same way locally and in the release workflow.
 #
-# Requires: rustup, cargo-zigbuild, zig and Node.js 22 (see CONTRIBUTING.md).
+# Requires: rustup, cargo-zigbuild, zig, nfpm and Node.js 22 (see
+# CONTRIBUTING.md).
 # Usage: scripts/build-release.sh VERSION [TARGET...]
 set -euo pipefail
 
@@ -41,13 +42,33 @@ for target in "${targets[@]}"; do
   mkdir -p "$stage"
   cp "target/$target/release/hearthgate" "$stage/"
   cp LICENSE README.md "$stage/"
-  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers "$stage/"
+  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers packaging/sysctl/60-hearthgate.conf "$stage/"
   mkdir -p "$stage/examples"
   cp packaging/hearthgate.toml packaging/examples/state.toml "$stage/examples/"
   tar -C dist -czf "dist/$name.tar.gz" "$name"
+
+  # Debian and RPM packages: the binary in /usr/bin, the unit in
+  # /usr/lib/systemd/system.
+  case "$target" in
+    x86_64-*) arch=amd64 ;;
+    aarch64-*) arch=arm64 ;;
+    armv7-*) arch=arm7 ;;
+    *) arch="" ;;
+  esac
+  if [[ -n "$arch" ]]; then
+    rm -rf target/package
+    mkdir -p target/package
+    cp "target/$target/release/hearthgate" target/package/
+    sed 's#/usr/local/bin/hearthgate#/usr/bin/hearthgate#' packaging/systemd/hearthgate.service >target/package/hearthgate.service
+    for format in deb rpm; do
+      VERSION="$version" ARCH="$arch" \
+        nfpm package --config packaging/nfpm/nfpm.yaml --packager "$format" --target dist/
+    done
+  fi
   rm -rf "$stage"
 done
 
-(cd dist && sha256sum ./*.tar.gz | sed 's# \./# #' >SHA256SUMS)
+cp scripts/install.sh dist/install.sh
+(cd dist && sha256sum ./*.tar.gz ./*.deb ./*.rpm ./install.sh | sed 's# \./# #' >SHA256SUMS)
 echo "==> Artifacts"
 ls -l dist

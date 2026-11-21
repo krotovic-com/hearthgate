@@ -1,0 +1,27 @@
+[package]
+name = "hearthgate-upnp"
+description = "Hearthgate router integration: UPnP IGD and NAT-PMP port mapping."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+hyper.workspace = true
+
+[lints]
+workspace = true

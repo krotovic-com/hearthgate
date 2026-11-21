@@ -11,6 +11,15 @@ publish.workspace = true
 [dependencies]
 hearthgate-model.workspace = true
 hearthgate-proxy.workspace = true
+base64 = "0.22"
+bytes.workspace = true
+# TSIG signing for RFC 2136 updates needs the dnssec-ring feature; no DNSSEC
+# validation is used.
+hickory-proto = { version = "0.26", default-features = false, features = ["std", "dnssec-ring"] }
+http.workspace = true
+http-body-util.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
 instant-acme.workspace = true
 rcgen.workspace = true
 rustls.workspace = true

@@ -59,6 +59,6 @@
     color: var(--hg-color-text-primary);
   }
   .hunk {
-    color: var(--hg-ink-700);
+    color: var(--hg-color-text-body);
   }
 </style>

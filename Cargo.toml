@@ -8,7 +8,7 @@ members = ["hearthgate", "crates/*"]
 # bump this by hand.
 version = "0.0.0-dev"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/krotovic-com/hearthgate"
 publish = false
@@ -20,6 +20,11 @@ hearthgate-proxy = { path = "crates/hearthgate-proxy" }
 hearthgate-acme = { path = "crates/hearthgate-acme" }
 hearthgate-services = { path = "crates/hearthgate-services" }
 hearthgate-api = { path = "crates/hearthgate-api" }
+hearthgate-firewall = { path = "crates/hearthgate-firewall" }
+hearthgate-upnp = { path = "crates/hearthgate-upnp" }
+hearthgate-vpn = { path = "crates/hearthgate-vpn" }
+hearthgate-docker = { path = "crates/hearthgate-docker" }
+hearthgate-notify = { path = "crates/hearthgate-notify" }
 
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
@@ -31,18 +36,17 @@ clap = { version = "4.5", features = ["derive", "env"] }
 http = "1"
 http-body-util = "0.1"
 futures-util = { version = "0.3", default-features = false }
-getrandom = "0.3"
+getrandom = { version = "0.3", features = ["std"] }
 hmac = "0.12"
-humantime = "2"
 if-addrs = "0.13"
 ipnet = { version = "2", features = ["serde"] }
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
-humantime-serde = "1"
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "native-tokio", "http1", "tls12", "logging"] }
 instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls", "rcgen"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring", "pem"] }
 rust-embed = { version = "8", features = ["mime-guess"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 sd-notify = "0.4"

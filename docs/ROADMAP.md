@@ -1,20 +1,20 @@
 # Hearthgate roadmap
 
-This is the plan for building Hearthgate from the current skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Each phase ends in a release that is useful on its own, so a home server can run Hearthgate from Phase 1 onwards and pick up new features with each upgrade.
+This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Phases 1 and 2 shipped as 0.2 and 0.3; Phases 3 to 6 ship together as 1.0. Phase 7 comes after.
 
-| Phase | Theme | Release | Dashboard screens it lights up |
-|---|---|---|---|
-| 1 | Core gateway: public interfaces, services, routes, TLS | 0.2 | none yet (config file, CLI and API) |
-| 2 | Dashboard and admin access | 0.3 | Overview, Public interfaces, Services, Routes, Settings |
-| 3 | Perimeter: firewall, blocklists, UPnP | 0.4 | Firewall, Settings → Router |
-| 4 | Built-in VPN and internal DNS | 0.5 | VPN peers |
-| 5 | Managed Docker containers and stacks | 0.6 | Services (managed), logs |
-| 6 | Hardening and 1.0 | 1.0 | Dark mode, backups, updates |
-| 7 | Optional AI assistant | 1.1 | AI review, "Review rules with AI" |
+| Phase | Theme | Release | Status | Dashboard screens it lights up |
+|---|---|---|---|---|
+| 1 | Core gateway: public interfaces, services, routes, TLS | 0.2 | Done | none yet (config file, CLI and API) |
+| 2 | Dashboard and admin access | 0.3 | Done | Overview, Public interfaces, Services, Routes, Settings |
+| 3 | Perimeter: firewall, blocklists, UPnP | 1.0 | Done | Firewall, Settings → Router |
+| 4 | Built-in VPN and internal DNS | 1.0 | Done | VPN peers |
+| 5 | Managed Docker containers and stacks | 1.0 | Done | Containers, logs |
+| 6 | Hardening and 1.0 | 1.0 | Done | Dark mode, backups, notifications |
+| 7 | Optional AI assistant | 1.1 | Planned | AI review, "Review rules with AI" |
 
 Phases 3, 4 and 5 depend only on Phase 1 and 2, so their order can be swapped if priorities change. AI is deliberately last: it reviews and explains everything the earlier phases build, so it needs them to exist and be stable.
 
-Release numbers are a guide. Real versions come from Conventional Commits as described in [CONTRIBUTING.md](../CONTRIBUTING.md), and a phase may span several minor releases.
+Release numbers are a guide. Real versions come from Conventional Commits as described in [CONTRIBUTING.md](https://github.com/krotovic-com/hearthgate/blob/main/CONTRIBUTING.md), and a phase may span several minor releases.
 
 ---
 
@@ -39,9 +39,9 @@ crates/
   hearthgate-ui        # embedded dashboard assets (Phase 2)
   hearthgate-firewall  # nftables and blocklists (Phase 3)
   hearthgate-upnp      # router port mapping (Phase 3)
-  hearthgate-vpn       # WireGuard (Phase 4)
-  hearthgate-dns       # internal DNS (Phase 4)
+  hearthgate-vpn       # WireGuard and internal DNS (Phase 4)
   hearthgate-docker    # managed containers and stacks (Phase 5)
+  hearthgate-notify    # webhook and email notifications (Phase 6)
   hearthgate-ai        # provider adapters and review engine (Phase 7)
 hearthgate/            # the binary: CLI, wiring, supervisor
 ```
@@ -151,9 +151,9 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 - **Firewall** with nftables in a dedicated `inet hearthgate` table, so it never touches rules the user or Docker manages. Default policy for inbound: drop, except declared public ports, the admin listener from allowed ranges, and established traffic. Applied atomically from the desired state with a "safe apply" that rolls back automatically if the admin can't confirm within 60 seconds (protects against locking yourself out).
 - Rule editor for allow and deny by source, port and protocol, plus per-interface rate limits (connections per second per source).
-- **Blocklists**: subscribe to feeds (for example Spamhaus DROP, FireHOL level 1, abuse.ch), refreshed on a schedule into nftables interval sets. Country blocking with an optional GeoIP database. Manual block and allow lists.
+- **Blocklists**: subscribe to feeds (for example Spamhaus DROP, FireHOL level 1, abuse.ch), refreshed on a schedule into nftables interval sets. Country blocking from published per-country address lists (ipdeny.com). Manual block and allow lists.
 - **Automatic bans**: the proxy reports abuse signals (repeated 4xx on auth paths, TLS handshake floods, scan patterns) and offenders get temporary bans, similar to fail2ban but built in.
-- **UPnP** with `igd-next` (and NAT-PMP or PCP where available), off by default. When enabled, router port mappings follow public interfaces: added on create, renewed before the lease ends, removed on delete and on shutdown. Shows the detected public IP and warns about double NAT or CGNAT.
+- **UPnP** with a small built-in UPnP IGD and NAT-PMP client, off by default. When enabled, router port mappings follow public interfaces: added on create, renewed before the lease ends, removed on delete and on shutdown. Shows the detected public IP and warns about double NAT or CGNAT.
 - Dashboard: **Firewall** screen (rules, blocklists, recent blocks), Settings → Router.
 
 ### Milestones
@@ -179,10 +179,10 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 ### Scope
 
-- **WireGuard** using the kernel module, managed over netlink (`defguard_wireguard_rs` or `wireguard-control`), with a userspace fallback (`boringtun`) for kernels without it. Its UDP port is opened in the firewall and through UPnP automatically.
+- **WireGuard** using the kernel module, managed with the standard `ip` and `wg` tools, with `wireguard-go` as the userspace fallback for kernels without it. Its UDP port is opened in the firewall and through UPnP automatically.
 - **Peers**: create from the dashboard, show a QR code and config file, revoke, last handshake and traffic per peer. Keys are generated on the server or supplied by the user.
 - Access policy per peer: full access to all services, or a selected list (enforced by the Phase 3 firewall).
-- **Internal DNS** with `hickory-server`, listening only on the VPN interface (and optionally the LAN): every service resolves as `name.home.internal`, the zone is configurable, other names forward to an upstream resolver.
+- **Internal DNS**: a small built-in server (messages parsed with `hickory-proto`), listening only on the VPN interface (and optionally the LAN): every service resolves as `name.home.internal`, the zone is configurable, other names forward to an upstream resolver.
 - Admin dashboard reachable over the VPN as well as the LAN.
 - Dashboard: **VPN peers** screen, DNS settings.
 
@@ -208,7 +208,7 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 ### Scope
 
 - Create, start, stop, restart, update (pull and recreate) and remove **containers** through **bollard**. Environment variables, volumes, port mappings and restart policies from the dashboard.
-- **Stacks** from Compose files. Recommendation: run the official `docker compose` CLI with a Hearthgate project label rather than reimplementing Compose, and read stack status back through the Docker API.
+- **Stacks** from Compose files, run with the official `docker compose` CLI rather than reimplementing Compose, with stack status read back through the Docker API.
 - Containers join a Hearthgate-managed Docker network so routes reach them without publishing host ports. Their names feed the internal DNS from Phase 4.
 - Logs (live tail and search) and basic stats (CPU, memory, restarts) per container.
 - Optional image update checks with a notification, never automatic updates without consent.
@@ -282,7 +282,7 @@ hearthgate/            # the binary: CLI, wiring, supervisor
 
 ## Open decisions
 
-These are worth confirming before the phase that needs them. The recommendation is listed first.
+These were confirmed before the phase that needed them; the choice made is listed first.
 
 1. **Dashboard framework (Phase 2).** A TypeScript SPA (Svelte 5 with Vite) embedded in the binary, because it maps directly to the Figma kit and has the widest contributor pool. The alternative is a Rust frontend (Leptos), which keeps one language but has a smaller ecosystem.
 2. **Desired-state storage (Phase 1).** SQLite with revisions, plus TOML import and export. The alternative is TOML as the only source of truth, which is simpler but makes concurrent UI edits, history and AI drafts harder.
