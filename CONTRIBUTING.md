@@ -41,16 +41,23 @@ scripts/build-release.sh 0.0.0-test aarch64-unknown-linux-musl   # just one
 
 Archives, `.deb` and `.rpm` packages (described in `packaging/nfpm/`), `install.sh` and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs. To check a package, install it in a throwaway VM or container: `apt install ./dist/hearthgate_*_amd64.deb`, then `apt purge hearthgate`.
 
-### Documentation
+### Website and documentation
 
-The documentation site is built from `docs/` with [mdBook](https://rust-lang.github.io/mdBook/) and published to GitHub Pages when `docs/` changes on `main`. Add a new page to `docs/SUMMARY.md`. Preview it with:
+The website at [hearthgate.dev](https://hearthgate.dev) has two parts, published together to GitHub Pages when `site/` or `docs/` changes on `main`:
+
+- `site/` is the landing page, plain HTML and CSS with no build step. Its fonts in `site/assets/` are shared with the docs.
+- `docs/` is the documentation, built with [mdBook](https://rust-lang.github.io/mdBook/) and served under `/docs/`. Its theme lives in `docs/theme/` and follows the brand guide. Add a new page to `docs/SUMMARY.md` under the section it belongs to.
+
+Preview the docs alone, or the whole site:
 
 ```sh
 cargo install --locked mdbook --version 0.4.52
-mdbook serve docs     # http://localhost:3000
+mdbook serve docs                              # docs only, http://localhost:3000
+scripts/build-site.sh                          # landing page and docs in target/site
+python3 -m http.server -d target/site 8000     # http://localhost:8000
 ```
 
-Links inside `docs/` stay relative; links to files outside it use their full GitHub URL, because the site only contains `docs/`.
+Links inside `docs/` stay relative; links to files outside it use their full GitHub URL, because the site only contains `site/` and `docs/`.
 
 ### Workspace layout
 

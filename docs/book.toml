@@ -1,6 +1,8 @@
-# The documentation site, built with mdBook (https://rust-lang.github.io/mdBook/)
-# and published to GitHub Pages by .github/workflows/docs.yml.
-#   mdbook serve docs     # preview at http://localhost:3000
+# The documentation, built with mdBook (https://rust-lang.github.io/mdBook/)
+# and published under /docs/ of the website by .github/workflows/docs.yml.
+# The theme in docs/theme/ matches the website in site/.
+#   mdbook serve docs        # docs only, at http://localhost:3000 (system fonts)
+#   scripts/build-site.sh    # website and docs together, in target/site
 [book]
 title = "Hearthgate"
 description = "The single, secure entry point from the internet to your home server."
@@ -15,11 +17,37 @@ create-missing = false
 [output.html]
 git-repository-url = "https://github.com/krotovic-com/hearthgate"
 edit-url-template = "https://github.com/krotovic-com/hearthgate/edit/main/docs/{path}"
-site-url = "/hearthgate/"
-default-theme = "light"
-preferred-dark-theme = "navy"
+site-url = "/docs/"
 favicon-svg = "brand/favicon.svg"
 no-section-label = true
+additional-css = ["theme/hearthgate.css"]
+additional-js = ["theme/hearthgate.js"]
+
+[output.html.print]
+enable = false
+
+# The user guide used to be one page.
+[output.html.redirect]
+"/guide.html" = "introduction.html"
+"/guide.html#how-it-fits-together" = "concepts.html"
+"/guide.html#install" = "install.html"
+"/guide.html#dashboard" = "dashboard.html"
+"/guide.html#desired-state" = "concepts.html#desired-state"
+"/guide.html#interfaces-and-listeners" = "interfaces.html"
+"/guide.html#services" = "services.html"
+"/guide.html#containers-and-stacks" = "containers.html"
+"/guide.html#routes" = "routes.html"
+"/guide.html#certificates" = "certificates.html"
+"/guide.html#firewall" = "firewall.html"
+"/guide.html#vpn-and-internal-dns" = "vpn.html"
+"/guide.html#router-port-forwarding" = "router.html"
+"/guide.html#notifications" = "notifications.html"
+"/guide.html#limits" = "limits.html"
+"/guide.html#command-line" = "cli.html"
+"/guide.html#admin-api" = "api.html"
+"/guide.html#metrics" = "api.html#metrics"
+"/guide.html#backups-and-upgrades" = "backups.html"
+"/guide.html#operating-it" = "operating.html"
 
 [output.html.search]
 limit-results = 20

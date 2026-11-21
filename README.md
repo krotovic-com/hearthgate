@@ -7,6 +7,8 @@
 
 <p align="center"><strong>Expose what you choose. Reach the rest over VPN.</strong></p>
 
+<p align="center"><a href="https://hearthgate.dev">hearthgate.dev</a> · <a href="https://hearthgate.dev/docs/">Documentation</a> · <a href="https://github.com/krotovic-com/hearthgate/releases/latest">Download</a></p>
+
 <p align="center">
   <a href="https://github.com/krotovic-com/hearthgate/actions/workflows/ci.yml"><img src="https://github.com/krotovic-com/hearthgate/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/krotovic-com/hearthgate/releases/latest"><img src="https://img.shields.io/github/v/release/krotovic-com/hearthgate?sort=semver&color=3B6EF5" alt="Latest release"></a>
@@ -15,7 +17,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** 1.0. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. The [user guide](docs/guide.md) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
+> **Status:** 1.0. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. The [documentation](https://hearthgate.dev/docs/) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
 
 ## What it does
 
@@ -63,9 +65,9 @@ Packages and archives exist for these architectures. The binaries are static (mu
 | ARM64 (Raspberry Pi 4/5, most ARM servers) | `aarch64-unknown-linux-musl` | `arm64` | `aarch64` |
 | ARMv7 (Raspberry Pi 2/3 on 32-bit OS) | `armv7-unknown-linux-musleabihf` | `armhf` | `armv7hl` |
 
-The [guide](docs/guide.md#install) shows the manual install from an archive.
+The [install guide](docs/install.md) shows the manual install from an archive.
 
-Then open `https://SERVER-LAN-ADDRESS:7380/` from a computer on your network and create the admin account with the setup code from `sudo -u hearthgate hearthgate setup-code` (the [guide](docs/guide.md#dashboard) explains the certificate warning). Or describe what to expose in a file (start from `examples/state.toml`) and apply it:
+Then open `https://SERVER-LAN-ADDRESS:7380/` from a computer on your network and create the admin account with the setup code from `sudo -u hearthgate hearthgate setup-code` ([First steps in the dashboard](docs/dashboard.md) explains the certificate warning). Or describe what to expose in a file (start from `examples/state.toml`) and apply it:
 
 ```sh
 sudo -u hearthgate hearthgate validate state.toml
@@ -73,7 +75,7 @@ sudo -u hearthgate hearthgate apply state.toml
 sudo -u hearthgate hearthgate status
 ```
 
-The [user guide](docs/guide.md) covers every setting, the CLI, certificates and the admin API.
+The [documentation](https://hearthgate.dev/docs/) covers every setting, the [CLI](docs/cli.md), [certificates](docs/certificates.md) and the [admin API](docs/api.md).
 
 ## Build from source
 
