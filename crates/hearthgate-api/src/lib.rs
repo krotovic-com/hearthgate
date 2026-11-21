@@ -12,6 +12,7 @@ mod auth;
 pub mod docker;
 pub mod firewall;
 pub mod live;
+pub mod notify;
 mod ratelimit;
 mod routes;
 mod secret;

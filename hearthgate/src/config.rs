@@ -36,6 +36,25 @@ pub struct Bootstrap {
     /// Scheduled backups.
     #[serde(default)]
     pub backup: BackupSettings,
+    /// Checking for new releases.
+    #[serde(default)]
+    pub updates: Updates,
+}
+
+/// Release checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Updates {
+    /// Ask GitHub once a day whether a newer release exists, and log and
+    /// notify when it does. Nothing is ever installed by itself.
+    #[serde(default = "default_true")]
+    pub check: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { check: true }
+    }
 }
 
 impl Default for Bootstrap {
@@ -46,6 +65,7 @@ impl Default for Bootstrap {
             admin: Admin::default(),
             docker: Docker::default(),
             backup: BackupSettings::default(),
+            updates: Updates::default(),
         }
     }
 }

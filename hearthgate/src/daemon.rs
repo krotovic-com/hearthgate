@@ -133,6 +133,22 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
             stop.clone(),
         ));
     }
+    let (notifications, notification_settings) =
+        watch::channel(Arc::new(hearthgate_model::Notifications::default()));
+    if let Some(events) = hearthgate_notify::channel() {
+        tokio::spawn(hearthgate_notify::run(
+            events,
+            notification_settings,
+            stop.clone(),
+        ));
+    }
+    tokio::spawn(crate::events::watch_health(
+        Arc::clone(&gateway),
+        stop.clone(),
+    ));
+    if bootstrap.updates.check {
+        tokio::spawn(crate::update::run(stop.clone()));
+    }
     tokio::spawn(crate::backup::run(
         bootstrap.data_dir.clone(),
         bootstrap.backup.clone(),
@@ -219,6 +235,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         containers: containers.clone(),
         docker: docker_manager,
         docker_state,
+        notifications,
         runtime,
         cert_generation: String::new(),
         cert_specs: Vec::new(),
@@ -302,6 +319,8 @@ struct Daemon {
     docker: Arc<hearthgate_docker::Manager>,
     /// The state the Docker task works towards.
     docker_state: watch::Sender<Option<Arc<DesiredState>>>,
+    /// Where notifications go.
+    notifications: watch::Sender<Arc<hearthgate_model::Notifications>>,
     runtime: Arc<RwLock<RuntimeInfo>>,
     /// Last seen certificate store generation.
     cert_generation: String,
@@ -357,6 +376,13 @@ impl Daemon {
                 .is_none_or(|c| c.containers != state.containers || c.stacks != state.stacks);
             if changed {
                 *current = Some(Arc::new(state.clone()));
+            }
+            changed
+        });
+        self.notifications.send_if_modified(|n| {
+            let changed = **n != state.notifications;
+            if changed {
+                *n = Arc::new(state.notifications.clone());
             }
             changed
         });
@@ -505,6 +531,7 @@ async fn acme_loop(
                         next = next.min(until.saturating_duration_since(std::time::Instant::now()));
                     }
                     Outcome::Failed(e) => {
+                        crate::events::certificate_failed(&interface, &e);
                         problems.insert(interface, e);
                     }
                     Outcome::Valid(_) | Outcome::Issued(_) => {

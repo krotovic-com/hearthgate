@@ -317,6 +317,37 @@ export interface DesiredState {
   limits?: Record<string, string | number>;
   firewall?: FirewallSettings;
   router?: RouterSettings;
+  notifications?: NotificationSettings;
+}
+
+export type EventKind = 'certificates' | 'health' | 'security' | 'backups' | 'updates';
+
+export interface Webhook {
+  name: string;
+  url: string;
+  format?: 'json' | 'ntfy';
+}
+
+export interface EmailSettings {
+  server: string;
+  security?: 'starttls' | 'tls' | 'none';
+  username?: string | null;
+  password_file?: string | null;
+  from: string;
+  to: string[];
+}
+
+export interface NotificationSettings {
+  /** Empty or missing: every kind. */
+  events?: EventKind[];
+  webhooks?: Webhook[];
+  email?: EmailSettings | null;
+}
+
+export interface NotificationTestResult {
+  target: string;
+  ok: boolean;
+  error?: string;
 }
 
 export interface PendingInfo {
@@ -503,6 +534,8 @@ export const api = {
     request<SessionInfo>('POST', '/api/v1/auth/login', { username, password, code: code || null }),
   logout: () => request<void>('POST', '/api/v1/auth/logout'),
   status: () => request<StatusResponse>('GET', '/api/v1/status'),
+  testNotifications: (settings: NotificationSettings) =>
+    request<NotificationTestResult[]>('POST', '/api/v1/notifications/test', settings),
   state: () => request<StateResponse>('GET', '/api/v1/state'),
   apply: (state: DesiredState, message: string) =>
     request<ApplyResponse>('PUT', '/api/v1/state', { state, message }),

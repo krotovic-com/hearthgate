@@ -96,6 +96,7 @@ impl DesiredState {
         self.validate_firewall(&mut c);
         self.validate_vpn(&mut c);
         self.validate_docker(&mut c);
+        self.validate_notifications(&mut c);
         if c.0.is_empty() {
             Ok(())
         } else {
@@ -257,6 +258,52 @@ impl DesiredState {
                     "dns.upstream",
                     format!("`{upstream}` is not an address, like 1.1.1.1 or 192.168.1.1:53"),
                 );
+            }
+        }
+    }
+
+    fn validate_notifications(&self, c: &mut Collector) {
+        let n = &self.notifications;
+        let mut seen = std::collections::BTreeSet::new();
+        for hook in &n.webhooks {
+            let path = format!("notifications.webhooks[{}]", hook.name);
+            if !is_valid_name(&hook.name) {
+                c.push(&path, "invalid name (use lowercase letters, digits and -)");
+            } else if !seen.insert(hook.name.as_str()) {
+                c.push(&path, "duplicate name");
+            }
+            if !hook.url.starts_with("https://") && !hook.url.starts_with("http://") {
+                c.push(&path, "url must be an http(s) URL");
+            }
+        }
+        if let Some(email) = &n.email {
+            if crate::split_endpoint(&email.server).is_none() {
+                c.push("notifications.email.server", "must be host or host:port");
+            }
+            if !crate::is_email(&email.from) {
+                c.push("notifications.email.from", "is not an email address");
+            }
+            if email.to.is_empty() {
+                c.push("notifications.email.to", "needs at least one address");
+            }
+            for to in &email.to {
+                if !crate::is_email(to) {
+                    c.push(
+                        "notifications.email.to",
+                        format!("{to} is not an email address"),
+                    );
+                }
+            }
+            if let Some(file) = &email.password_file
+                && !file.starts_with('/')
+            {
+                c.push(
+                    "notifications.email.password_file",
+                    "must be an absolute path",
+                );
+            }
+            if email.password_file.is_some() && email.username.is_none() {
+                c.push("notifications.email.username", "is needed with a password");
             }
         }
     }

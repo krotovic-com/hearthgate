@@ -41,6 +41,7 @@ crates/
   hearthgate-upnp      # router port mapping (Phase 3)
   hearthgate-vpn       # WireGuard and internal DNS (Phase 4)
   hearthgate-docker    # managed containers and stacks (Phase 5)
+  hearthgate-notify    # webhook and email notifications (Phase 6)
   hearthgate-ai        # provider adapters and review engine (Phase 7)
 hearthgate/            # the binary: CLI, wiring, supervisor
 ```

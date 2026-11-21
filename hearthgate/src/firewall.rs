@@ -160,6 +160,19 @@ impl FirewallCtl {
                         );
                         self.perimeter.clear_pending();
                         self.waiting = None;
+                        hearthgate_notify::emit(hearthgate_notify::Event::new(
+                            hearthgate_model::EventKind::Security,
+                            hearthgate_notify::Severity::Warning,
+                            format!("firewall-undone:{revision}"),
+                            "A firewall change was undone",
+                            format!(
+                                "Revision {revision} changed the firewall, but nobody confirmed \
+                                 the change from a new connection within {}s, so Hearthgate went \
+                                 back to the previous rules. If you made the change, check that \
+                                 it doesn't lock out the dashboard, and apply it again.",
+                                hearthgate_firewall::CONFIRM_WINDOW.as_secs()
+                            ),
+                        ));
                         self.restore(pending).await;
                         return true;
                     }

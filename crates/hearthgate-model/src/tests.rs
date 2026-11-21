@@ -469,3 +469,38 @@ fn dns01_is_checked() {
         "host or host:port",
     );
 }
+
+#[test]
+fn notifications_are_checked() {
+    let ok = r#"
+[notifications]
+events = ["certificates", "health"]
+[[notifications.webhooks]]
+name = "phone"
+url = "https://ntfy.sh/my-topic"
+format = "ntfy"
+[notifications.email]
+server = "smtp.example.com"
+username = "me"
+password_file = "/etc/hearthgate/smtp"
+from = "hearthgate@example.com"
+to = ["me@example.com"]
+"#;
+    assert!(messages(ok).is_empty(), "{:?}", messages(ok));
+    let state = DesiredState::from_toml(ok).unwrap();
+    assert!(state.notifications.wants(EventKind::Health));
+    assert!(!state.notifications.wants(EventKind::Updates));
+    assert_eq!(DesiredState::from_toml(&state.to_toml()).unwrap(), state);
+    assert_problem(
+        "[[notifications.webhooks]]\nname = \"a\"\nurl = \"ftp://x\"\n",
+        "http(s) URL",
+    );
+    assert_problem(
+        &ok.replace("to = [\"me@example.com\"]", "to = [\"not an address\"]"),
+        "not an email address",
+    );
+    assert_problem(
+        &ok.replace("username = \"me\"\n", ""),
+        "needed with a password",
+    );
+}

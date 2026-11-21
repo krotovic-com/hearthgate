@@ -303,6 +303,17 @@ pub fn scheduled(data_dir: &Path, settings: &BackupSettings) -> Result<PathBuf> 
     Ok(path)
 }
 
+fn backup_failed(error: &str) {
+    warn!("backup failed: {error}");
+    hearthgate_notify::emit(hearthgate_notify::Event::new(
+        hearthgate_model::EventKind::Backups,
+        hearthgate_notify::Severity::Warning,
+        "backup",
+        "The scheduled backup failed",
+        format!("Hearthgate could not write its daily backup: {error}"),
+    ));
+}
+
 /// Writes scheduled backups until `stop`. The first one is due one
 /// interval after the newest existing backup, so restarts don't add more.
 pub async fn run(data_dir: PathBuf, settings: BackupSettings, stop: CancellationToken) {
@@ -328,8 +339,8 @@ pub async fn run(data_dir: PathBuf, settings: BackupSettings, stop: Cancellation
         let (d, s) = (data_dir.clone(), settings.clone());
         match tokio::task::spawn_blocking(move || scheduled(&d, &s)).await {
             Ok(Ok(path)) => info!("backup written to {}", path.display()),
-            Ok(Err(e)) => warn!("backup failed: {e:#}"),
-            Err(e) => warn!("backup failed: {e}"),
+            Ok(Err(e)) => backup_failed(&format!("{e:#}")),
+            Err(e) => backup_failed(&e.to_string()),
         }
         wait = settings.interval;
     }

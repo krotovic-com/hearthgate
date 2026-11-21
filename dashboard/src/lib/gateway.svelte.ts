@@ -12,6 +12,8 @@ import {
   type FirewallSettings,
   type ManagedContainer,
   type Stack,
+  type NotificationSettings,
+  type EmailSettings,
 } from './api';
 import { canonical, compact, withDefaults } from './firewall';
 import { compactDns, compactVpn, dnsWithDefaults, vpnWithDefaults, type FullDns, type FullVpn } from './vpn';
@@ -135,6 +137,9 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   const dns = compactDns(dnsWithDefaults(next.dns));
   if (dns) next.dns = dns;
   else delete next.dns;
+  const notifications = compactNotifications(next.notifications);
+  if (Object.keys(notifications).length) next.notifications = notifications;
+  else delete next.notifications;
   for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
 }
@@ -235,6 +240,26 @@ export function draftSummary(): string[] {
   }
   out.push(...vpnSummary(vpnWithDefaults(cur.vpn), vpnWithDefaults(next.vpn)));
   if (canonical(dnsWithDefaults(cur.dns)) !== canonical(dnsWithDefaults(next.dns))) out.push('Change internal DNS');
+  if (canonical(compactNotifications(cur.notifications)) !== canonical(compactNotifications(next.notifications))) {
+    out.push('Change notifications');
+  }
+  return out;
+}
+
+/** Notification settings as the server stores them (empty parts left out). */
+export function compactNotifications(n: NotificationSettings | undefined): NotificationSettings {
+  const out: NotificationSettings = {};
+  if (n?.events?.length) out.events = [...n.events];
+  if (n?.webhooks?.length) {
+    out.webhooks = n.webhooks.map((w) => (w.format && w.format !== 'json' ? { ...w } : { name: w.name, url: w.url }));
+  }
+  if (n?.email) {
+    const e: EmailSettings = { server: n.email.server, from: n.email.from, to: [...n.email.to] };
+    if (n.email.security && n.email.security !== 'starttls') e.security = n.email.security;
+    if (n.email.username) e.username = n.email.username;
+    if (n.email.password_file) e.password_file = n.email.password_file;
+    out.email = e;
+  }
   return out;
 }
 

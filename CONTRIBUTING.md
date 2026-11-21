@@ -52,6 +52,7 @@ Archives and `SHA256SUMS` land in `dist/`. This is the same script the release w
 | `crates/hearthgate-services` | Health checks and read-only Docker discovery |
 | `crates/hearthgate-firewall` | nftables ruleset, safe apply, blocklist feeds and automatic bans |
 | `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
+| `crates/hearthgate-notify` | Notifications: webhooks and email |
 | `crates/hearthgate-docker` | Managed containers and Compose stacks |
 | `crates/hearthgate-vpn` | WireGuard interface, keys, peer configs and the internal DNS server |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |

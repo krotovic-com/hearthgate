@@ -41,7 +41,7 @@ use crate::auth::Principal;
         crate::vpn::info, crate::vpn::peer_config,
         crate::docker::info, crate::docker::restart, crate::docker::update_container,
         crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
-        crate::docker::updates
+        crate::docker::updates, crate::notify::test
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -59,7 +59,7 @@ use crate::auth::Principal;
         crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
         crate::firewall::RouterInfo, crate::firewall::MappingInfo,
         crate::vpn::VpnInfo, crate::vpn::VpnPeerInfo, crate::vpn::DnsName, crate::vpn::PeerConfigRequest,
-        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo
+        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo, crate::notify::TestResult
     )),
     modifiers(&Security),
     tags(
@@ -124,6 +124,7 @@ pub fn router(state: ApiState) -> Router {
             get(crate::access::get_access).put(crate::access::put_access),
         )
         .route("/api/v1/vpn", get(crate::vpn::info))
+        .route("/api/v1/notifications/test", post(crate::notify::test))
         .route("/api/v1/docker", get(crate::docker::info))
         .route("/api/v1/docker/updates", get(crate::docker::updates))
         .route(
