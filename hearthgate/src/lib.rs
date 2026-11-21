@@ -6,6 +6,7 @@
 
 pub mod backup;
 pub mod cli;
+mod cli_ai;
 mod cli_docker;
 mod cli_vpn;
 pub mod config;

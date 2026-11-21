@@ -8,6 +8,7 @@
 
 pub mod access;
 mod account;
+pub mod ai;
 mod auth;
 pub mod docker;
 pub mod firewall;
@@ -37,7 +38,7 @@ use tracing::{debug, info, warn};
 
 pub use access::AccessControl;
 pub use account::setup_code;
-pub use auth::{AuthState, TOKEN_FILE, load_or_create_token};
+pub use auth::{AuthState, TOKEN_FILE, load_or_create_token, write_private};
 pub use live::{Live, LogBuffer, LogLayer};
 pub use routes::ApiDoc;
 pub use tls::AdminTls;
@@ -92,6 +93,8 @@ pub struct ApiState {
     pub vpn: Arc<hearthgate_vpn::Runtime>,
     /// Managed containers and stacks.
     pub docker: Arc<hearthgate_docker::Manager>,
+    /// The optional AI assistant's key and reviews.
+    pub ai: Arc<ai::Assistant>,
 }
 
 impl ApiState {

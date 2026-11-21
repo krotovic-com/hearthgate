@@ -15,6 +15,7 @@
   import Containers from './pages/Containers.svelte';
   import FirewallPending from './lib/layout/FirewallPending.svelte';
   import History from './pages/History.svelte';
+  import AiReview from './pages/AiReview.svelte';
   import Settings from './pages/Settings.svelte';
   import NotFound from './pages/NotFound.svelte';
   import { session, loadSession, logout } from './lib/session.svelte';
@@ -51,6 +52,7 @@
     '/containers': { title: 'Containers', component: Containers },
     '/vpn': { title: 'VPN peers', component: Vpn },
     '/firewall': { title: 'Firewall', component: Firewall },
+    '/ai': { title: 'AI review', component: AiReview },
     '/history': { title: 'History', component: History },
     '/settings': { title: 'Settings', component: Settings },
   } as const;

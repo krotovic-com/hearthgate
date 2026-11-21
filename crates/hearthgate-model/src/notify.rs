@@ -1,5 +1,5 @@
 //! Notifications: where Hearthgate reports certificate, health, security,
-//! backup and update events.
+//! backup, update and AI review events.
 
 use serde::{Deserialize, Serialize};
 
@@ -53,15 +53,18 @@ pub enum EventKind {
     Backups,
     /// A new Hearthgate release is out.
     Updates,
+    /// The weekly AI review found something.
+    Reviews,
 }
 
 impl EventKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Certificates,
         Self::Health,
         Self::Security,
         Self::Backups,
         Self::Updates,
+        Self::Reviews,
     ];
 }
 

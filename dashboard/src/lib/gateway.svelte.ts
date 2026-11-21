@@ -14,6 +14,7 @@ import {
   type Stack,
   type NotificationSettings,
   type EmailSettings,
+  type AiSettings,
 } from './api';
 import { canonical, compact, withDefaults } from './firewall';
 import { compactDns, compactVpn, dnsWithDefaults, vpnWithDefaults, type FullDns, type FullVpn } from './vpn';
@@ -140,8 +141,47 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   const notifications = compactNotifications(next.notifications);
   if (Object.keys(notifications).length) next.notifications = notifications;
   else delete next.notifications;
+  const ai = compactAi(next.ai);
+  if (ai) next.ai = ai;
+  else delete next.ai;
   for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
+}
+
+/** AI settings as the server stores them: left out while all default. */
+export function compactAi(a: AiSettings | undefined): AiSettings | undefined {
+  const out: AiSettings = {
+    enabled: a?.enabled ?? false,
+    provider: a?.provider ?? 'anthropic',
+    timeout: a?.timeout || '2m',
+  };
+  if (a?.model?.trim()) out.model = a.model.trim();
+  if (a?.endpoint?.trim()) out.endpoint = a.endpoint.trim();
+  if (a?.api_key_file?.trim()) out.api_key_file = a.api_key_file.trim();
+  const redact = (a?.redact ?? []).filter((r) => r.trim() !== '');
+  if (redact.length) out.redact = redact;
+  if (a?.weekly_review) out.weekly_review = true;
+  const isDefault =
+    !out.enabled &&
+    out.provider === 'anthropic' &&
+    out.timeout === '2m' &&
+    Object.keys(out).length === 3;
+  return isDefault ? undefined : out;
+}
+
+/** Changes the draft's AI assistant settings. */
+export function editAi(change: (ai: AiSettings) => void): void {
+  edit((s) => {
+    const ai: AiSettings = { ...compactAi(s.ai) };
+    change(ai);
+    s.ai = ai;
+  });
+}
+
+/** Replaces the draft, such as with a suggested fix, for review. */
+export function replaceDraft(state: DesiredState): void {
+  gw.draft = clone(state);
+  edit(() => {});
 }
 
 function compactContainer(c: ManagedContainer): ManagedContainer {
@@ -242,6 +282,9 @@ export function draftSummary(): string[] {
   if (canonical(dnsWithDefaults(cur.dns)) !== canonical(dnsWithDefaults(next.dns))) out.push('Change internal DNS');
   if (canonical(compactNotifications(cur.notifications)) !== canonical(compactNotifications(next.notifications))) {
     out.push('Change notifications');
+  }
+  if (canonical(compactAi(cur.ai) ?? {}) !== canonical(compactAi(next.ai) ?? {})) {
+    out.push('Change the AI assistant');
   }
   return out;
 }

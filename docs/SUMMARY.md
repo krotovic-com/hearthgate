@@ -19,6 +19,7 @@
 - [VPN and internal DNS](vpn.md)
 - [Router port forwarding](router.md)
 - [Notifications](notifications.md)
+- [AI assistant](ai.md)
 - [Limits](limits.md)
 
 # Operate

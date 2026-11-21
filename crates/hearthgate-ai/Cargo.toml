@@ -1,0 +1,33 @@
+[package]
+name = "hearthgate-ai"
+description = "Hearthgate's optional AI assistant: provider adapters, redaction, reviews and troubleshooting."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+hearthgate-model.workspace = true
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, optional = true }
+
+[features]
+openapi = ["dep:utoipa", "hearthgate-model/openapi"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -28,6 +28,9 @@ Run these commands as root or as the `hearthgate` user, because they open the da
 | `hearthgate docker logs NAME [-n N]` | A managed container's recent output |
 | `hearthgate docker update NAME` | Pull the newest image of a container or stack and recreate it if it changed |
 | `hearthgate docker check-updates` | Whether newer images exist, without changing anything |
+| `hearthgate ai status` | The AI assistant's settings and whether a key is stored |
+| `hearthgate ai enable [--provider P] [--model M] [--endpoint URL] [--weekly]`, `hearthgate ai disable` | Turn the [AI assistant](ai.md) on or off as a new revision |
+| `hearthgate ai key [--remove]` | Store the provider's API key, read from standard input |
 | `hearthgate backup create [-o FILE]` | Write a backup now |
 | `hearthgate backup list` | Backups in the backup directory |
 | `hearthgate backup restore FILE [--force]` | Restore a backup (stop the service first) |

@@ -6,6 +6,9 @@
   import Router from './settings/Router.svelte';
   import Notifications from './settings/Notifications.svelte';
   import Account from './settings/Account.svelte';
+  import Ai from './settings/Ai.svelte';
+  import { onMount } from 'svelte';
+  import { param } from '../lib/router.svelte';
 
   const sections = [
     { id: 'general', label: 'General' },
@@ -13,9 +16,19 @@
     { id: 'certificates', label: 'Certificates' },
     { id: 'router', label: 'Router' },
     { id: 'notifications', label: 'Notifications' },
+    { id: 'ai', label: 'AI assistant' },
     { id: 'account', label: 'Account' },
   ];
   let active = $state('general');
+
+  // `/settings?section=ai` opens at that section.
+  onMount(() => {
+    const wanted = param('section');
+    if (wanted && sections.some((s) => s.id === wanted)) {
+      active = wanted;
+      queueMicrotask(() => document.getElementById(wanted)?.scrollIntoView({ block: 'start' }));
+    }
+  });
 
   function go(event: MouseEvent, id: string) {
     event.preventDefault();
@@ -44,6 +57,7 @@
     <Certificates />
     <Router />
     <Notifications />
+    <Ai />
     <Account />
   </div>
 </div>

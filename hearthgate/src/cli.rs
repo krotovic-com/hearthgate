@@ -76,6 +76,39 @@ pub enum VpnCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum AiCommand {
+    /// Show the assistant's settings and whether a key is stored.
+    Status,
+    /// Turn the assistant on. Nothing is sent until a review starts.
+    Enable {
+        /// `anthropic` (default), `openai`, `gemini` or `openai-compatible`
+        /// (Ollama, LM Studio and the like).
+        #[arg(long)]
+        provider: Option<String>,
+        /// Model name (default: the provider's recommended model).
+        #[arg(long)]
+        model: Option<String>,
+        /// API base URL, such as `http://127.0.0.1:11434/v1` for Ollama.
+        #[arg(long)]
+        endpoint: Option<String>,
+        /// Also run a review every week and send its result as a
+        /// notification.
+        #[arg(long)]
+        weekly: bool,
+    },
+    /// Turn the assistant off.
+    Disable,
+    /// Store the provider's API key, read from standard input. It is kept
+    /// in the data directory, readable only by Hearthgate, and never in the
+    /// configuration.
+    Key {
+        /// Remove the stored key instead.
+        #[arg(long)]
+        remove: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub enum DockerCommand {
     /// Show managed containers and stacks.
     Status,
@@ -168,6 +201,11 @@ pub enum Command {
     Docker {
         #[command(subcommand)]
         action: DockerCommand,
+    },
+    /// The optional AI assistant: turn it on or off, store its API key.
+    Ai {
+        #[command(subcommand)]
+        action: AiCommand,
     },
     /// Back up the state, certificates and keys, or restore a backup.
     Backup {
@@ -282,6 +320,7 @@ impl Cli {
             Command::Firewall { action } => firewall(&bootstrap, &action),
             Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
             Command::Docker { action } => crate::cli_docker::run(&bootstrap, action),
+            Command::Ai { action } => crate::cli_ai::run(&bootstrap, action),
             Command::Backup { action } => backup(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;

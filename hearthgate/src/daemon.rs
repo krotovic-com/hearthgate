@@ -619,7 +619,9 @@ async fn start_admin(
         router: Arc::clone(router),
         vpn: Arc::clone(vpn),
         docker: Arc::clone(docker),
+        ai: Arc::new(hearthgate_api::ai::Assistant::new(&bootstrap.data_dir)),
     };
+    tokio::spawn(hearthgate_api::ai::run_weekly(api.clone(), stop.clone()));
     let wanted = {
         let store = Arc::clone(store);
         let access = Arc::clone(&access);

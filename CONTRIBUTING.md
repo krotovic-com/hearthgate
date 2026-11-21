@@ -73,6 +73,7 @@ Links inside `docs/` stay relative; links to files outside it use their full Git
 | `crates/hearthgate-upnp` | Router port forwarding with UPnP IGD and NAT-PMP |
 | `crates/hearthgate-notify` | Notifications: webhooks and email |
 | `crates/hearthgate-docker` | Managed containers and Compose stacks |
+| `crates/hearthgate-ai` | Optional AI assistant: provider adapters, redaction, reviews and fixes |
 | `crates/hearthgate-vpn` | WireGuard interface, keys, peer configs and the internal DNS server |
 | `crates/hearthgate-api` | Admin REST API, OpenAPI document, logins, admin listeners and the embedded dashboard |
 | `dashboard` | The web dashboard (Svelte 5, Vite, TypeScript), built from the Figma UI kit |

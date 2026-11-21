@@ -7,6 +7,7 @@
   import KeyValue from '../lib/ui/KeyValue.svelte';
   import ConfirmDialog from '../lib/ui/ConfirmDialog.svelte';
   import ServiceEditor from '../lib/editors/ServiceEditor.svelte';
+  import AiPanel from '../lib/ai/AiPanel.svelte';
   import type { Service } from '../lib/api';
   import { live } from '../lib/live.svelte';
   import { gw, draft, edit, routesUsingService } from '../lib/gateway.svelte';
@@ -100,6 +101,7 @@
     });
     navigate('/services');
   }
+  let explainOpen = $state(false);
 </script>
 
 <PageHeader
@@ -232,6 +234,9 @@
         <Button variant="secondary" size="small" onclick={() => navigate(`/routes?service=${selected.name}`)}>
           {isPublic(selected) ? 'View routes' : 'Publish'}
         </Button>
+        {#if health[services.indexOf(selected)]?.status === 'critical'}
+          <Button variant="secondary" size="small" onclick={() => (explainOpen = true)}>Explain with AI</Button>
+        {/if}
         <span class="spacer"></span>
         <Button variant="ghost" size="small" onclick={() => (confirmOpen = true)}>Remove</Button>
       </div>
@@ -248,6 +253,15 @@
     : 'It stops being a target for Hearthgate. The service itself keeps running.'}
   onconfirm={remove}
 />
+
+{#if selected}
+  <AiPanel
+    bind:open={explainOpen}
+    scope={{ kind: 'service', service: selected.name }}
+    title="Why is {selected.name} failing?"
+    description="The model reads its health checks, proxy errors, routes and container logs, and explains the likely causes. Nothing changes until you apply a fix from your draft."
+  />
+{/if}
 
 <style>
   .stats {

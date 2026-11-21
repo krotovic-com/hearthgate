@@ -12,6 +12,7 @@
   import Dialog from '../lib/ui/Dialog.svelte';
   import ConfirmDialog from '../lib/ui/ConfirmDialog.svelte';
   import RuleEditor from '../lib/editors/RuleEditor.svelte';
+  import AiPanel from '../lib/ai/AiPanel.svelte';
   import BlocklistEditor from '../lib/editors/BlocklistEditor.svelte';
   import { api, ApiError, type FirewallInfo, type FirewallRule, type RecentDrop } from '../lib/api';
   import { draft, editFirewall, gw } from '../lib/gateway.svelte';
@@ -149,6 +150,7 @@
     policy: 'not open',
     'rate-limit': 'rate limit',
   };
+  let aiOpen = $state(false);
 </script>
 
 <PageHeader
@@ -156,6 +158,7 @@
   subtitle="Every port is closed unless a public interface opens it. These rules filter the traffic that reaches an open port."
 >
   {#snippet actions()}
+    <Button variant="ghost" onclick={() => (aiOpen = true)}>Review rules with AI</Button>
     <Button variant="secondary" onclick={() => (listsOpen = true)}>Blocklists</Button>
     <Button
       onclick={() => {
@@ -388,6 +391,13 @@
 
 <RuleEditor bind:open={editorOpen} original={editing} />
 <BlocklistEditor bind:open={listsOpen} />
+<AiPanel
+  bind:open={aiOpen}
+  scope={{ kind: 'firewall' }}
+  title="AI rule review"
+  description="The model checks your rules against the open ports, recent drops and bans. Nothing changes until you apply a fix from your draft."
+/>
+
 <ConfirmDialog
   bind:open={confirmOpen}
   title="Remove {removing?.name}?"

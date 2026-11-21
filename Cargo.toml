@@ -25,6 +25,7 @@ hearthgate-upnp = { path = "crates/hearthgate-upnp" }
 hearthgate-vpn = { path = "crates/hearthgate-vpn" }
 hearthgate-docker = { path = "crates/hearthgate-docker" }
 hearthgate-notify = { path = "crates/hearthgate-notify" }
+hearthgate-ai = { path = "crates/hearthgate-ai" }
 
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
@@ -51,6 +52,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 serde = { version = "1", features = ["derive"] }
 sd-notify = "0.4"
 serde_json = "1"
+regex = "1"
 sha1 = "0.10"
 sha2 = "0.10"
 similar = "2"

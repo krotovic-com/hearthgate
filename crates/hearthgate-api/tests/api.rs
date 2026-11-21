@@ -78,6 +78,7 @@ async fn start(options: Options) -> Api {
             Some(dir.path().join("vpn")),
         )),
         docker: Arc::default(),
+        ai: Arc::new(hearthgate_api::ai::Assistant::new(dir.path().join("data"))),
     };
     let listener = TcpListener::bind(options.bind).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -822,6 +823,7 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         router: Arc::default(),
         vpn: Arc::default(),
         docker: Arc::default(),
+        ai: Arc::new(hearthgate_api::ai::Assistant::new(dir.path().join("data"))),
     };
     let first = free_port();
     access
@@ -1157,4 +1159,304 @@ async fn docker_endpoints_without_docker() {
         let (status, body) = call(api.port, method, path, Some(TOKEN), None).await;
         assert_eq!(status, want, "{method} {path}: {body}");
     }
+}
+
+/// A stand-in AI provider that counts connections and keeps each request.
+struct FakeProvider {
+    port: u16,
+    connections: Arc<std::sync::atomic::AtomicUsize>,
+    requests: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+}
+
+impl FakeProvider {
+    /// Answers every request with `answer(request body)` as an
+    /// OpenAI-style chat completion.
+    async fn start(answer: fn(&str) -> Value) -> Self {
+        use std::sync::atomic::Ordering;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let connections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (count, kept) = (Arc::clone(&connections), Arc::clone(&requests));
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+                let kept = Arc::clone(&kept);
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 8192];
+                    let (head, body) = loop {
+                        let n = stream.read(&mut chunk).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                        let text = String::from_utf8_lossy(&buf).into_owned();
+                        if let Some(end) = text.find("\r\n\r\n") {
+                            let head = text[..end].to_owned();
+                            let len: usize = head
+                                .lines()
+                                .find_map(|l| {
+                                    l.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .map(|v| v.trim().parse().unwrap())
+                                })
+                                .unwrap_or(0);
+                            if buf.len() >= end + 4 + len {
+                                break (
+                                    head,
+                                    String::from_utf8_lossy(&buf[end + 4..]).into_owned(),
+                                );
+                            }
+                        }
+                    };
+                    let reply = json!({
+                        "choices": [{ "message": { "role": "assistant", "content": answer(&body).to_string() } }]
+                    })
+                    .to_string();
+                    kept.lock().unwrap().push((head, body));
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                        reply.len()
+                    );
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        Self {
+            port,
+            connections,
+            requests,
+        }
+    }
+
+    fn connections(&self) -> usize {
+        self.connections.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// The placeholder the request used for the service's host.
+fn host_placeholder(body: &str) -> String {
+    let at = body.find(r#"\"host\": \""#).expect("host in the material") + 12;
+    let end = body[at..].find('>').unwrap();
+    body[at..=at + end].to_owned()
+}
+
+fn ai_state(port: u16, enabled: bool) -> Value {
+    json!({
+        "interfaces": [{
+            "name": "web", "domains": ["photos.familyhome.net"],
+            "listeners": [{ "port": 18443, "mode": "raw" }]
+        }],
+        "services": [{
+            "name": "photos", "kind": "external", "host": "192.168.1.20",
+            "ports": { "http": 8080 }
+        }],
+        "routes": [{
+            "name": "photos", "interface": "web", "listener": 18443,
+            "targets": [{ "service": "photos", "port": "http" }]
+        }],
+        "notifications": {
+            "webhooks": [{ "name": "phone", "url": "https://ntfy.familyhome.net/s3cr3t-topic" }]
+        },
+        "ai": {
+            "enabled": enabled,
+            "provider": "openai-compatible",
+            "model": "llama3.1",
+            "endpoint": format!("http://127.0.0.1:{port}/v1"),
+            "redact": ["photos"]
+        }
+    })
+}
+
+#[tokio::test]
+async fn ai_review_is_off_by_default_redacted_and_fixes_roll_back() {
+    let api = start(LOCAL).await;
+    let t = Some(TOKEN);
+    let fake = FakeProvider::start(|body| {
+        let host = host_placeholder(body);
+        json!({
+            "summary": "One problem.",
+            "findings": [
+                { "severity": "low", "area": "routes", "title": "Minor", "detail": "Nothing to change.",
+                  "fix": { "summary": "", "changes": [] } },
+                { "severity": "high", "area": "services", "title": format!("{host} answers on the wrong port"),
+                  "detail": "Health checks fail.",
+                  "fix": { "summary": "Use port 8081", "changes": [
+                      { "op": "replace", "path": "/services/0/ports/http", "value_json": "8081" },
+                      { "op": "replace", "path": "/services/0/host", "value_json": format!("\"{host}\"") }
+                  ] } }
+            ]
+        })
+    })
+    .await;
+    let leaks = ["192.168.1.20", "familyhome.net", "s3cr3t", "photos"];
+
+    // Off: nothing reaches the provider, but the payload can be seen.
+    let (status, body) = call(api.port, "POST", "/api/v1/ai/review", t, Some(json!({}))).await;
+    assert_eq!(status, 409, "no state yet: {body}");
+    let (status, body) = call(
+        api.port,
+        "PUT",
+        "/api/v1/state",
+        t,
+        Some(json!({ "state": ai_state(fake.port, false) })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (status, body) = call(api.port, "POST", "/api/v1/ai/review", t, Some(json!({}))).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("turned off"), "{body}");
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/review",
+        t,
+        Some(json!({ "scope": { "kind": "service", "service": "photos" } })),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    let (status, body) = call(api.port, "POST", "/api/v1/ai/preview", t, Some(json!({}))).await;
+    assert_eq!(status, 200, "{body}");
+    let preview = json_of(&body);
+    assert_eq!(
+        preview["url"],
+        format!("http://127.0.0.1:{}/v1/chat/completions", fake.port)
+    );
+    assert!(preview["redacted"].as_u64().unwrap() >= 2);
+    let sent = preview["body"].to_string();
+    for leak in leaks {
+        assert!(!sent.contains(leak), "{leak} in the preview: {sent}");
+    }
+    let (_, body) = call(api.port, "GET", "/api/v1/ai", t, None).await;
+    assert_eq!(json_of(&body)["enabled"], false);
+    assert_eq!(fake.connections(), 0, "AI is off: no connection at all");
+
+    // On, against a local OpenAI-compatible model without a key.
+    call(
+        api.port,
+        "PUT",
+        "/api/v1/state",
+        t,
+        Some(json!({ "state": ai_state(fake.port, true) })),
+    )
+    .await;
+    let (status, body) = call(api.port, "POST", "/api/v1/ai/review", t, Some(json!({}))).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(fake.connections(), 1);
+    let (head, sent) = fake.requests.lock().unwrap()[0].clone();
+    assert!(head.starts_with("POST /v1/chat/completions"), "{head}");
+    assert!(
+        !head.to_ascii_lowercase().contains("authorization"),
+        "{head}"
+    );
+    for leak in leaks {
+        assert!(!sent.contains(leak), "{leak} was sent: {sent}");
+    }
+    let review = json_of(&body);
+    assert_eq!(review["model"], "llama3.1");
+    assert_eq!(review["findings"][0]["severity"], "high");
+    assert_eq!(
+        review["findings"][0]["title"],
+        "192.168.1.20 answers on the wrong port"
+    );
+    assert!(review["findings"][1].get("fix").is_none());
+    let id = review["id"].as_str().unwrap().to_owned();
+
+    // The fix becomes a draft, applies as a revision and rolls back.
+    let (status, body) = call(
+        api.port,
+        "POST",
+        &format!("/api/v1/ai/reviews/{id}/findings/0/draft"),
+        t,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let draft = json_of(&body)["state"].clone();
+    assert_eq!(draft["services"][0]["host"], "192.168.1.20");
+    assert_eq!(draft["services"][0]["ports"]["http"], 8081);
+    assert_eq!(
+        call(
+            api.port,
+            "POST",
+            &format!("/api/v1/ai/reviews/{id}/findings/1/draft"),
+            t,
+            None
+        )
+        .await
+        .0,
+        404
+    );
+    let (status, body) = call(
+        api.port,
+        "PUT",
+        "/api/v1/state",
+        t,
+        Some(json!({ "state": draft, "message": "AI fix" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(json_of(&body)["revision"]["id"], 3);
+    let (status, body) = call(api.port, "POST", "/api/v1/revisions/2/rollback", t, None).await;
+    assert_eq!(status, 200, "{body}");
+    let (_, body) = call(api.port, "GET", "/api/v1/state", t, None).await;
+    assert_eq!(
+        json_of(&body)["state"]["services"][0]["ports"]["http"],
+        8080
+    );
+
+    let (_, body) = call(api.port, "GET", "/api/v1/ai/reviews", t, None).await;
+    assert_eq!(json_of(&body).as_array().unwrap().len(), 1);
+    api.stop.cancel();
+}
+
+#[tokio::test]
+async fn ai_key_is_stored_privately() {
+    let api = start(LOCAL).await;
+    let t = Some(TOKEN);
+    let (status, body) = call(
+        api.port,
+        "PUT",
+        "/api/v1/ai/key",
+        t,
+        Some(json!({ "key": "sk-test-123" })),
+    )
+    .await;
+    assert_eq!(status, 204, "{body}");
+    let path = api
+        .dir
+        .path()
+        .join("data")
+        .join(hearthgate_api::ai::KEY_FILE);
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap().trim(),
+        "sk-test-123"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let (_, body) = call(api.port, "GET", "/api/v1/ai", t, None).await;
+    let info = json_of(&body);
+    assert_eq!(info["key_set"], true);
+    assert_eq!(info["model"], "claude-opus-5-5");
+    let (_, body) = call(api.port, "GET", "/api/v1/state/export", t, None).await;
+    assert!(!body.contains("sk-test"), "{body}");
+    call(
+        api.port,
+        "PUT",
+        "/api/v1/ai/key",
+        t,
+        Some(json!({ "key": "" })),
+    )
+    .await;
+    assert!(!path.exists());
+    api.stop.cancel();
 }

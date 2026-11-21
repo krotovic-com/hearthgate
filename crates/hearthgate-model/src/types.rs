@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Container, Dns, Firewall, Notifications, Router, Stack, Vpn};
+use crate::{Ai, Container, Dns, Firewall, Notifications, Router, Stack, Vpn};
 
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +48,9 @@ pub struct DesiredState {
     /// Where certificate, health, security, backup and update events go.
     #[serde(default, skip_serializing_if = "Notifications::is_default")]
     pub notifications: Notifications,
+    /// The optional AI assistant. Off unless turned on here.
+    #[serde(default, skip_serializing_if = "Ai::is_default")]
+    pub ai: Ai,
 }
 
 /// Settings for automatic certificates (ACME).

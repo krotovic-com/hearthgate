@@ -97,6 +97,7 @@ impl DesiredState {
         self.validate_vpn(&mut c);
         self.validate_docker(&mut c);
         self.validate_notifications(&mut c);
+        self.validate_ai(&mut c);
         if c.0.is_empty() {
             Ok(())
         } else {
@@ -259,6 +260,48 @@ impl DesiredState {
                     format!("`{upstream}` is not an address, like 1.1.1.1 or 192.168.1.1:53"),
                 );
             }
+        }
+    }
+
+    fn validate_ai(&self, c: &mut Collector) {
+        let ai = &self.ai;
+        if let Some(model) = &ai.model
+            && (model.trim().is_empty() || model.len() > 200 || model.contains(char::is_whitespace))
+        {
+            c.push("ai.model", "must be a model name without spaces");
+        }
+        if ai.model_or_default().is_none() && ai.enabled {
+            c.push("ai.model", "is required for this provider");
+        }
+        if let Some(endpoint) = &ai.endpoint
+            && !(endpoint.starts_with("https://") || endpoint.starts_with("http://"))
+        {
+            c.push("ai.endpoint", "must be an http(s) URL");
+        }
+        if ai.endpoint_or_default().is_none() && ai.enabled {
+            c.push("ai.endpoint", "is required for an OpenAI-compatible server");
+        }
+        if let Some(file) = &ai.api_key_file
+            && !file.starts_with('/')
+        {
+            c.push("ai.api_key_file", "must be an absolute path");
+        }
+        for (i, pattern) in ai.redact.iter().enumerate() {
+            if pattern.is_empty() || pattern.len() > 500 {
+                c.push(format!("ai.redact[{i}]"), "must be 1 to 500 characters");
+            } else if let Err(e) = regex::Regex::new(pattern) {
+                c.push(
+                    format!("ai.redact[{i}]"),
+                    format!("not a valid regular expression: {e}"),
+                );
+            } else if regex::Regex::new(pattern).is_ok_and(|r| r.is_match("")) {
+                c.push(format!("ai.redact[{i}]"), "must not match empty text");
+            }
+        }
+        if ai.timeout < std::time::Duration::from_secs(5)
+            || ai.timeout > std::time::Duration::from_secs(900)
+        {
+            c.push("ai.timeout", "must be between 5s and 15m");
         }
     }
 
