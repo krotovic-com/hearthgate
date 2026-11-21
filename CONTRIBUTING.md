@@ -41,6 +41,17 @@ scripts/build-release.sh 0.0.0-test aarch64-unknown-linux-musl   # just one
 
 Archives, `.deb` and `.rpm` packages (described in `packaging/nfpm/`), `install.sh` and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs. To check a package, install it in a throwaway VM or container: `apt install ./dist/hearthgate_*_amd64.deb`, then `apt purge hearthgate`.
 
+### Documentation
+
+The documentation site is built from `docs/` with [mdBook](https://rust-lang.github.io/mdBook/) and published to GitHub Pages when `docs/` changes on `main`. Add a new page to `docs/SUMMARY.md`. Preview it with:
+
+```sh
+cargo install --locked mdbook --version 0.4.52
+mdbook serve docs     # http://localhost:3000
+```
+
+Links inside `docs/` stay relative; links to files outside it use their full GitHub URL, because the site only contains `docs/`.
+
 ### Workspace layout
 
 | Crate | What it holds |

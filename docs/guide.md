@@ -1,6 +1,6 @@
 # Hearthgate user guide
 
-This guide covers what Hearthgate 0.3 does: the dashboard, public interfaces, services, routes, load balancing, health checks, certificates, the command line and the admin API. Later releases add the firewall, VPN and managed Docker (see the [roadmap](ROADMAP.md)).
+This guide covers everything Hearthgate 1.0 does: the dashboard, public interfaces, services, managed containers and stacks, routes, load balancing, health checks, certificates, the firewall, the VPN with internal DNS, router port forwarding, notifications, backups, the command line and the admin API.
 
 ## How it fits together
 
@@ -91,7 +91,7 @@ They must match. To avoid the warning, give Hearthgate a certificate from your o
 
 ## Desired state
 
-A complete example is in [`packaging/examples/state.toml`](../packaging/examples/state.toml). Check a file without applying it with `hearthgate validate state.toml`. Every problem is reported at once, with where it is.
+A complete example is in [`packaging/examples/state.toml`](https://github.com/krotovic-com/hearthgate/blob/main/packaging/examples/state.toml). Check a file without applying it with `hearthgate validate state.toml`. Every problem is reported at once, with where it is.
 
 Names of interfaces, services, routes and certificates use lowercase letters, digits and dashes.
 

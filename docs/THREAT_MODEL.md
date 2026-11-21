@@ -1,6 +1,6 @@
 # Threat model
 
-Hearthgate is meant to be the only thing on a home server that the internet can reach. This document says what it defends against, how, and what it leaves to you. It covers Hearthgate 1.0. Report anything that breaks these promises as described in [SECURITY.md](../SECURITY.md).
+Hearthgate is meant to be the only thing on a home server that the internet can reach. This document says what it defends against, how, and what it leaves to you. It covers Hearthgate 1.0. Report anything that breaks these promises as described in [SECURITY.md](https://github.com/krotovic-com/hearthgate/blob/main/SECURITY.md).
 
 ## What is worth protecting
 

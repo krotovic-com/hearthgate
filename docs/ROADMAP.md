@@ -14,7 +14,7 @@ This is the plan for building Hearthgate from the current skeleton (v0.1.0) to a
 
 Phases 3, 4 and 5 depend only on Phase 1 and 2, so their order can be swapped if priorities change. AI is deliberately last: it reviews and explains everything the earlier phases build, so it needs them to exist and be stable.
 
-Release numbers are a guide. Real versions come from Conventional Commits as described in [CONTRIBUTING.md](../CONTRIBUTING.md), and a phase may span several minor releases.
+Release numbers are a guide. Real versions come from Conventional Commits as described in [CONTRIBUTING.md](https://github.com/krotovic-com/hearthgate/blob/main/CONTRIBUTING.md), and a phase may span several minor releases.
 
 ---
 
