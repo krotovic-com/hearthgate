@@ -156,9 +156,14 @@ fn upgrades_from_every_release() {
         );
         let auth = format!("Authorization: Bearer {}", info.admin_token);
         let start = Instant::now();
+        // Wait until the API answers and the stored state is running (the
+        // listeners can be up a moment before the revision is recorded).
         let status = loop {
             let (code, body) = curl(port, "/api/v1/status", &["-H", &auth]);
-            if code == 200 {
+            if code == 200
+                && serde_json::from_str::<serde_json::Value>(&body)
+                    .is_ok_and(|s| !s["revision"].is_null())
+            {
                 break body;
             }
             assert!(
