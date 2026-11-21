@@ -77,6 +77,8 @@ They must match. To avoid the warning, give Hearthgate a certificate from your o
 
 **Who can reach it.** Settings, Dashboard access shows the addresses and networks in effect and lets you choose your own (private ranges only). Changes apply at once; a change that would lock out the browser making it is refused. If you lock yourself out anyway, run `sudo -u hearthgate hearthgate admin-access --reset` and restart the service. Setting `admin.listen` or `admin.allow` in the bootstrap file fixes the values there instead, and the dashboard shows them read-only.
 
+**Dark mode.** The dashboard follows your system's light or dark setting. To pick one for a browser, use Settings, General, Appearance.
+
 ## Desired state
 
 A complete example is in [`packaging/examples/state.toml`](../packaging/examples/state.toml). Check a file without applying it with `hearthgate validate state.toml`. Every problem is reported at once, with where it is.
