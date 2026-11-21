@@ -34,11 +34,12 @@ Release builds are static musl binaries made with [cargo-zigbuild](https://githu
 ```sh
 pip install ziglang            # or install zig 0.15+ from your package manager
 cargo install --locked cargo-zigbuild
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest   # .deb and .rpm packages
 scripts/build-release.sh 0.0.0-test                              # all targets
 scripts/build-release.sh 0.0.0-test aarch64-unknown-linux-musl   # just one
 ```
 
-Archives and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs.
+Archives, `.deb` and `.rpm` packages (described in `packaging/nfpm/`), `install.sh` and `SHA256SUMS` land in `dist/`. This is the same script the release workflow runs. To check a package, install it in a throwaway VM or container: `apt install ./dist/hearthgate_*_amd64.deb`, then `apt purge hearthgate`.
 
 ### Workspace layout
 

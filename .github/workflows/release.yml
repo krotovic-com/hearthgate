@@ -48,7 +48,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         if: steps.version.outputs.version != ''
         with:
-          tool: cargo-zigbuild,git-cliff
+          tool: cargo-zigbuild,git-cliff,nfpm
 
       - uses: actions/setup-node@v5
         if: steps.version.outputs.version != ''
@@ -74,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz dist/SHA256SUMS \
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz dist/*.deb dist/*.rpm dist/install.sh dist/SHA256SUMS \
             --target "$GITHUB_SHA" \
             --title "${{ steps.version.outputs.tag }}" \
             --notes-file notes.md

@@ -39,32 +39,31 @@ Coming next:
 
 ## Install
 
-Each release ships static (musl) binaries for Linux:
-
-| Architecture | Target |
-|---|---|
-| x86_64 | `x86_64-unknown-linux-musl` |
-| ARM64 (Raspberry Pi 4/5, most ARM servers) | `aarch64-unknown-linux-musl` |
-| ARMv7 (Raspberry Pi 2/3 on 32-bit OS) | `armv7-unknown-linux-musleabihf` |
+On Debian, Ubuntu, Fedora, RHEL, openSUSE or any other Linux with systemd:
 
 ```sh
-VERSION=0.1.0                       # pick from the releases page
-TARGET=x86_64-unknown-linux-musl
-curl -LO "https://github.com/krotovic-com/hearthgate/releases/download/v$VERSION/hearthgate-v$VERSION-$TARGET.tar.gz"
-curl -LO "https://github.com/krotovic-com/hearthgate/releases/download/v$VERSION/SHA256SUMS"
-sha256sum --check --ignore-missing SHA256SUMS
+curl -fsSL https://github.com/krotovic-com/hearthgate/releases/latest/download/install.sh | sudo sh
+```
 
-tar -xzf "hearthgate-v$VERSION-$TARGET.tar.gz"
-cd "hearthgate-v$VERSION-$TARGET"
-sudo install -m 0755 hearthgate /usr/local/bin/hearthgate
-sudo install -m 0644 hearthgate.sysusers /usr/lib/sysusers.d/hearthgate.conf
-sudo systemd-sysusers
-sudo install -m 0644 hearthgate.service /etc/systemd/system/hearthgate.service
-sudo install -d -m 0755 /etc/hearthgate
-sudo install -m 0644 examples/hearthgate.toml /etc/hearthgate/hearthgate.toml
-sudo systemctl daemon-reload
+The script picks the `.deb`, the `.rpm` or the static archive for your system, checks it against the release's `SHA256SUMS`, installs it, starts the service and prints the setup code for the first account. Run it again to upgrade. Read it first if you prefer: it is [scripts/install.sh](scripts/install.sh).
+
+Or download a package from the [releases page](https://github.com/krotovic-com/hearthgate/releases) yourself:
+
+```sh
+sudo apt install ./hearthgate_1.0.0_amd64.deb      # Debian, Ubuntu
+sudo dnf install ./hearthgate-1.0.0-1.x86_64.rpm   # Fedora, RHEL
 sudo systemctl enable --now hearthgate
 ```
+
+Packages and archives exist for these architectures. The binaries are static (musl), so they run on any distribution:
+
+| Architecture | Archive target | .deb | .rpm |
+|---|---|---|---|
+| x86_64 | `x86_64-unknown-linux-musl` | `amd64` | `x86_64` |
+| ARM64 (Raspberry Pi 4/5, most ARM servers) | `aarch64-unknown-linux-musl` | `arm64` | `aarch64` |
+| ARMv7 (Raspberry Pi 2/3 on 32-bit OS) | `armv7-unknown-linux-musleabihf` | `armhf` | `armv7hl` |
+
+The [guide](docs/guide.md#install) shows the manual install from an archive.
 
 Then open `https://SERVER-LAN-ADDRESS:7380/` from a computer on your network and create the admin account with the setup code from `sudo -u hearthgate hearthgate setup-code` (the [guide](docs/guide.md#dashboard) explains the certificate warning). Or describe what to expose in a file (start from `examples/state.toml`) and apply it:
 
