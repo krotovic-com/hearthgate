@@ -16,6 +16,7 @@
     { kind: 'security', label: 'Security', description: 'A firewall change was undone because nobody confirmed it.' },
     { kind: 'backups', label: 'Backups', description: 'The daily backup failed.' },
     { kind: 'updates', label: 'New releases', description: 'A newer Hearthgate is available. Nothing is installed by itself.' },
+    { kind: 'reviews', label: 'AI reviews', description: 'The weekly AI review finished, with its findings, or failed.' },
   ];
 
   function wanted(kind: EventKind): boolean {

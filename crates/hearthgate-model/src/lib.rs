@@ -9,6 +9,7 @@
 //! certificates, health) live in the subsystem crates, which compile a
 //! validated [`DesiredState`] into their own runtime structures.
 
+mod ai;
 mod docker;
 pub mod duration;
 mod firewall;
@@ -18,6 +19,7 @@ mod types;
 mod validate;
 mod vpn;
 
+pub use ai::*;
 pub use docker::*;
 pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};

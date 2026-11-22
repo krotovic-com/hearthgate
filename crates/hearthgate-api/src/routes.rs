@@ -41,7 +41,9 @@ use crate::auth::Principal;
         crate::vpn::info, crate::vpn::peer_config,
         crate::docker::info, crate::docker::restart, crate::docker::update_container,
         crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
-        crate::docker::updates, crate::notify::test
+        crate::docker::updates, crate::notify::test,
+        crate::ai::info, crate::ai::put_key, crate::ai::preview, crate::ai::review,
+        crate::ai::reviews, crate::ai::fix_draft
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -59,7 +61,12 @@ use crate::auth::Principal;
         crate::firewall::RecentDropInfo, crate::firewall::BanRequest,
         crate::firewall::RouterInfo, crate::firewall::MappingInfo,
         crate::vpn::VpnInfo, crate::vpn::VpnPeerInfo, crate::vpn::DnsName, crate::vpn::PeerConfigRequest,
-        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo, crate::notify::TestResult
+        crate::vpn::PeerConfigResponse, crate::docker::DockerInfo, crate::notify::TestResult,
+        crate::ai::AiInfo, crate::ai::ProviderInfo, crate::ai::KeyRequest,
+        crate::ai::ReviewRequest, crate::ai::PreviewRequest, crate::ai::AiPreview,
+        crate::ai::FixDraft, hearthgate_ai::Review, hearthgate_ai::Finding, hearthgate_ai::Fix,
+        hearthgate_ai::PatchOp, hearthgate_ai::patch::Op, hearthgate_ai::Scope,
+        hearthgate_ai::Severity, hearthgate_ai::Outgoing
     )),
     modifiers(&Security),
     tags(
@@ -68,7 +75,8 @@ use crate::auth::Principal;
         (name = "settings", description = "Settings kept outside the desired state"),
         (name = "firewall", description = "Firewall status, bans and change confirmation"),
         (name = "vpn", description = "VPN status and new peer configurations"),
-        (name = "docker", description = "Managed containers and stacks")
+        (name = "docker", description = "Managed containers and stacks"),
+        (name = "ai", description = "The optional AI assistant: reviews, troubleshooting and fixes")
     )
 )]
 pub struct ApiDoc;
@@ -125,6 +133,15 @@ pub fn router(state: ApiState) -> Router {
         )
         .route("/api/v1/vpn", get(crate::vpn::info))
         .route("/api/v1/notifications/test", post(crate::notify::test))
+        .route("/api/v1/ai", get(crate::ai::info))
+        .route("/api/v1/ai/key", axum::routing::put(crate::ai::put_key))
+        .route("/api/v1/ai/preview", post(crate::ai::preview))
+        .route("/api/v1/ai/review", post(crate::ai::review))
+        .route("/api/v1/ai/reviews", get(crate::ai::reviews))
+        .route(
+            "/api/v1/ai/reviews/{id}/findings/{index}/draft",
+            post(crate::ai::fix_draft),
+        )
         .route("/api/v1/docker", get(crate::docker::info))
         .route("/api/v1/docker/updates", get(crate::docker::updates))
         .route(
@@ -705,7 +722,7 @@ pub struct CertificateInfo {
     pub issuer: String,
 }
 
-fn cert_list(state: &ApiState) -> Result<Vec<CertificateInfo>, ApiError> {
+pub(crate) fn cert_list(state: &ApiState) -> Result<Vec<CertificateInfo>, ApiError> {
     let list = state.certs.list().map_err(|e| {
         ApiError(
             StatusCode::INTERNAL_SERVER_ERROR,

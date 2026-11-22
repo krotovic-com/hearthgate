@@ -1,10 +1,10 @@
 # Notifications
 
-Hearthgate can tell you when something needs attention: a certificate that can't be renewed, a service that fails its health checks for a minute (and when it's back), a firewall change undone because nobody confirmed it, a failed backup, or a new release. Each problem is sent once, and again after 6 hours if it persists; at most 20 messages go out per hour. Set it up under Settings, Notifications, which can also send a test message, or in the state:
+Hearthgate can tell you when something needs attention: a certificate that can't be renewed, a service that fails its health checks for a minute (and when it's back), a firewall change undone because nobody confirmed it, a failed backup, a new release, or the result of the weekly [AI review](ai.md). Each problem is sent once, and again after 6 hours if it persists; at most 20 messages go out per hour. Set it up under Settings, Notifications, which can also send a test message, or in the state:
 
 ```toml
 [notifications]
-# events = ["certificates", "health", "security", "backups", "updates"]   # default: all
+# events = ["certificates", "health", "security", "backups", "updates", "reviews"]   # default: all
 
 [[notifications.webhooks]]
 name = "phone"

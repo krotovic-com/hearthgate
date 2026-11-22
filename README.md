@@ -17,7 +17,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** 1.0. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. The [documentation](https://hearthgate.dev/docs/) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
+> **Status:** 1.1. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. Since 1.1 an optional AI assistant reviews the setup with Claude, OpenAI, Gemini or a local model, and suggests fixes you review as a diff. The [documentation](https://hearthgate.dev/docs/) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
 
 ## What it does
 

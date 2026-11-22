@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 hearthgate-acme.workspace = true
+hearthgate-ai = { workspace = true, features = ["openapi"] }
 hearthgate-firewall.workspace = true
 hearthgate-upnp.workspace = true
 hearthgate-vpn.workspace = true

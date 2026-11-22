@@ -318,9 +318,80 @@ export interface DesiredState {
   firewall?: FirewallSettings;
   router?: RouterSettings;
   notifications?: NotificationSettings;
+  ai?: AiSettings;
 }
 
-export type EventKind = 'certificates' | 'health' | 'security' | 'backups' | 'updates';
+export type EventKind = 'certificates' | 'health' | 'security' | 'backups' | 'updates' | 'reviews';
+
+export type AiProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
+
+/** The optional AI assistant. Off unless turned on. */
+export interface AiSettings {
+  enabled?: boolean;
+  provider?: AiProvider;
+  model?: string | null;
+  endpoint?: string | null;
+  api_key_file?: string | null;
+  /** Extra patterns (regular expressions) to hide before sending. */
+  redact?: string[];
+  weekly_review?: boolean;
+  timeout?: string;
+}
+
+export interface AiProviderInfo {
+  id: AiProvider;
+  default_model: string | null;
+  default_endpoint: string | null;
+  needs_key: boolean;
+}
+
+export interface AiInfo {
+  enabled: boolean;
+  provider: AiProvider;
+  model: string | null;
+  endpoint: string | null;
+  key_set: boolean;
+  key_from_file: boolean;
+  needs_key: boolean;
+  providers: AiProviderInfo[];
+  busy: boolean;
+}
+
+export type AiScope = { kind: 'all' } | { kind: 'firewall' } | { kind: 'service'; service: string };
+export type AiSeverity = 'high' | 'medium' | 'low';
+
+export interface PatchOp {
+  op: 'add' | 'remove' | 'replace';
+  path: string;
+  value?: unknown;
+}
+
+export interface AiFinding {
+  severity: AiSeverity;
+  area: string;
+  title: string;
+  detail: string;
+  fix?: { summary: string; changes: PatchOp[] };
+}
+
+export interface AiReview {
+  id: string;
+  created: string;
+  created_unix: number;
+  scope: AiScope;
+  provider: AiProvider;
+  model: string;
+  scheduled: boolean;
+  revision?: number | null;
+  summary: string;
+  findings: AiFinding[];
+}
+
+export interface AiPreview {
+  url: string;
+  body: unknown;
+  redacted: number;
+}
 
 export interface Webhook {
   name: string;
@@ -534,6 +605,17 @@ export const api = {
     request<SessionInfo>('POST', '/api/v1/auth/login', { username, password, code: code || null }),
   logout: () => request<void>('POST', '/api/v1/auth/logout'),
   status: () => request<StatusResponse>('GET', '/api/v1/status'),
+  ai: () => request<AiInfo>('GET', '/api/v1/ai'),
+  setAiKey: (key: string) => request<void>('PUT', '/api/v1/ai/key', { key }),
+  aiPreview: (scope: AiScope, settings?: AiSettings) =>
+    request<AiPreview>('POST', '/api/v1/ai/preview', { scope, settings: settings ?? null }),
+  aiReview: (scope: AiScope) => request<AiReview>('POST', '/api/v1/ai/review', { scope }),
+  aiReviews: () => request<AiReview[]>('GET', '/api/v1/ai/reviews'),
+  aiFixDraft: (review: string, finding: number) =>
+    request<{ state: DesiredState; summary: string }>(
+      'POST',
+      `/api/v1/ai/reviews/${encodeURIComponent(review)}/findings/${finding}/draft`,
+    ),
   testNotifications: (settings: NotificationSettings) =>
     request<NotificationTestResult[]>('POST', '/api/v1/notifications/test', settings),
   state: () => request<StateResponse>('GET', '/api/v1/state'),

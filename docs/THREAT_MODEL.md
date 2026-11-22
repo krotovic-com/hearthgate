@@ -85,6 +85,12 @@ When management is on, Hearthgate only changes containers carrying its own label
 
 Hearthgate does not sandbox the containers you run. A container with a vulnerable application, mounted host paths or extra privileges is as dangerous as it would be without Hearthgate.
 
+## The AI assistant
+
+The assistant is off by default, and while it is off no code path connects to a provider (tested). When on, it only sends something when you start a review or the weekly review runs. Each request goes through redaction first: IP addresses, domains, URLs, email addresses, keys, tokens, passwords, container environment values and your own patterns are replaced by placeholders, and the exact body can be inspected beforehand. Redaction is pattern-based, so an unusual secret format can slip through; use `redact` patterns or a local model when that matters.
+
+The model's answers are treated as untrusted input. They can't run anything or change the configuration: a suggested fix is only a patch that is validated like any edit, loaded into your draft, and applied only when you review and apply it. A model that was tricked by text in a log line can at worst suggest a bad change, which you see as a diff. The API key is kept out of the state, exports and API responses, in a file only Hearthgate can read.
+
 ## The router
 
 UPnP and NAT-PMP are off by default. When on, Hearthgate only asks the router to forward the ports of public interfaces and WireGuard, removes those mappings when they leave the state or on shutdown, and never forwards the dashboard. Any device on your LAN can ask a UPnP router for the same, so if you don't need it, keep it off on the router too.

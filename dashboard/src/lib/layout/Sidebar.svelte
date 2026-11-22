@@ -7,8 +7,6 @@
 
   let { status }: { status: StatusResponse | null } = $props();
 
-  // Sections that exist in this release. AI review joins the list in the
-  // release that adds it.
   const items: { href: string; label: string; icon: IconName }[] = [
     { href: '/', label: 'Overview', icon: 'overview' },
     { href: '/interfaces', label: 'Public interfaces', icon: 'globe' },
@@ -17,6 +15,7 @@
     { href: '/routes', label: 'Routes', icon: 'route' },
     { href: '/vpn', label: 'VPN peers', icon: 'vpn' },
     { href: '/firewall', label: 'Firewall', icon: 'firewall' },
+    { href: '/ai', label: 'AI review', icon: 'ai' },
     { href: '/history', label: 'History', icon: 'arrow' },
     { href: '/settings', label: 'Settings', icon: 'settings' },
   ];

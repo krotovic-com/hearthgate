@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { request as httpRequest } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { server } from "./server";
@@ -378,6 +379,93 @@ test.describe.serial("dashboard", () => {
     ).toBeHidden();
   });
 
+  test("AI review with a local model: redacted, fix through the draft", async ({
+    page,
+  }) => {
+    // A stand-in for Ollama's OpenAI-compatible API.
+    const bodies: string[] = [];
+    const fake = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        bodies.push(body);
+        const answer = {
+          summary: "One thing to change.",
+          findings: [
+            {
+              severity: "medium",
+              area: "notifications",
+              title: "Security events are not sent anywhere specific",
+              detail: "Choose which events you want.",
+              fix: {
+                summary: "Send only security events",
+                changes: [
+                  {
+                    op: "add",
+                    path: "/notifications/events",
+                    value_json: '["security"]',
+                  },
+                ],
+              },
+            },
+          ],
+        };
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(answer) } }],
+          }),
+        );
+      });
+    });
+    await new Promise<void>((ok) => fake.listen(0, "127.0.0.1", ok));
+    const port = (fake.address() as AddressInfo).port;
+    try {
+      await login(page);
+      await page.getByRole("link", { name: "AI review", exact: true }).click();
+      await expect(page.getByText("The AI assistant is off")).toBeVisible();
+      await accessible(page);
+      await page.getByRole("button", { name: "Set up the assistant" }).click();
+      await page.getByRole("switch", { name: "Use the AI assistant" }).click();
+      await page
+        .getByRole("combobox", { name: "Provider" })
+        .selectOption("openai-compatible");
+      await page.getByLabel("Model", { exact: true }).fill("llama3.1");
+      await page.getByLabel("Model", { exact: true }).press("Tab");
+      await page
+        .getByLabel("Endpoint", { exact: true })
+        .fill(`http://127.0.0.1:${port}/v1`);
+      await page.getByLabel("Endpoint", { exact: true }).press("Tab");
+      await page
+        .getByRole("button", { name: "Show exactly what is sent" })
+        .click();
+      const preview = page.getByLabel("Request body");
+      await expect(preview).toContainText("<DOMAIN_1>");
+      await expect(preview).not.toContainText("example.test");
+      await accessible(page);
+      expect(bodies).toHaveLength(0);
+      await applyDraft(page, "openai-compatible");
+
+      await page.getByRole("link", { name: "AI review", exact: true }).click();
+      await page.getByRole("button", { name: "Run review now" }).click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Security events are not sent anywhere specific",
+        }),
+      ).toBeVisible();
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).not.toContain("example.test");
+      expect(bodies[0]).not.toContain("127.0.0.1:" + server().upstreamPort);
+      await accessible(page);
+      await page.getByRole("button", { name: "Put fix in draft" }).click();
+      await expect(page.getByText(/is in your draft/)).toBeVisible();
+      await page.screenshot({ path: "test-results/ai-review.png", fullPage: true });
+      await applyDraft(page, "security");
+    } finally {
+      fake.close();
+    }
+  });
+
   test("a firewall change is kept once the dashboard confirms it", async ({
     page,
   }) => {
@@ -416,6 +504,7 @@ test.describe.serial("dashboard", () => {
       ["Routes", "Routes"],
       ["VPN peers", "VPN peers"],
       ["Firewall", "Firewall"],
+      ["AI review", "AI review"],
       ["History", "History"],
       ["Settings", "Settings"],
     ]) {
@@ -450,6 +539,7 @@ test.describe.serial("dashboard", () => {
       "Services",
       "Routes",
       "Firewall",
+      "AI review",
       "History",
       "Settings",
     ]) {

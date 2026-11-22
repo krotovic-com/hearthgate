@@ -1,6 +1,6 @@
 # Hearthgate roadmap
 
-This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Phases 1 and 2 shipped as 0.2 and 0.3; Phases 3 to 6 ship together as 1.0. Phase 7 comes after.
+This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1.0 release and beyond. It is split into seven phases. Phases 1 and 2 shipped as 0.2 and 0.3; Phases 3 to 6 shipped together as 1.0, and Phase 7 as 1.1.
 
 | Phase | Theme | Release | Status | Dashboard screens it lights up |
 |---|---|---|---|---|
@@ -10,7 +10,7 @@ This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1
 | 4 | Built-in VPN and internal DNS | 1.0 | Done | VPN peers |
 | 5 | Managed Docker containers and stacks | 1.0 | Done | Containers, logs |
 | 6 | Hardening and 1.0 | 1.0 | Done | Dark mode, backups, notifications |
-| 7 | Optional AI assistant | 1.1 | Planned | AI review, "Review rules with AI" |
+| 7 | Optional AI assistant | 1.1 | Done | AI review, "Review rules with AI" |
 
 Phases 3, 4 and 5 depend only on Phase 1 and 2, so their order can be swapped if priorities change. AI is deliberately last: it reviews and explains everything the earlier phases build, so it needs them to exist and be stable.
 
