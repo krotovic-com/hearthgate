@@ -137,7 +137,13 @@ impl VpnCtl {
         });
         let public_key = hearthgate_vpn::keys::public_key(&key);
         let backend = running.then(|| self.runtime.device.backend());
-        let lan_nets = lan.iter().map(|(_, net)| *net).collect();
+        // Devices with full access also reach containers, so their routes
+        // cover the container engines' bridges, which are not LAN.
+        let lan_nets = lan
+            .iter()
+            .chain(&hearthgate_api::access::detect_container_networks())
+            .map(|(_, net)| *net)
+            .collect();
         self.runtime.update(|i| {
             i.running = running;
             i.backend = backend;

@@ -24,7 +24,8 @@ pub struct Info {
     /// Service addresses only the running gateway knows (containers,
     /// resolved host names).
     pub resolved: BTreeMap<String, Vec<IpAddr>>,
-    /// This machine's LAN networks, for full-access peer routes.
+    /// This machine's LAN and container networks, for full-access peer
+    /// routes.
     pub lan: Vec<IpNet>,
 }
 

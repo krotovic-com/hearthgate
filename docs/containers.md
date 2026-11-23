@@ -37,6 +37,7 @@ Containers and the containers of stacks join a Docker network called `hearthgate
 - Hearthgate never touches containers it didn't create. If a container with the same name already exists, it reports a problem instead.
 - Images are pulled when missing. **Update** in the dashboard (or `hearthgate docker update NAME`) pulls the newest image and recreates the container if it changed. **Check for updates** asks the registries without changing anything; nothing is ever updated without you asking.
 - Containers, Logs shows a container's output with search, CPU, memory and restarts.
+- Containers don't count as the local network: with the firewall on they reach this machine only on public ports, and the dashboard never accepts them. See [Firewall](firewall.md) to allow a host port.
 - VPN devices reach containers too: devices with full access reach the `hearthgate` network, and managed containers get names like `whoami.home.internal`.
 
 To only follow existing containers and never create any, set `docker.manage = false` in the bootstrap file; `docker.enabled = false` turns Docker off entirely.

@@ -39,6 +39,8 @@ url = "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol
 # ban_time = "1h"
 ```
 
+Containers are not part of the local network. Docker's bridges (`docker0` and `br-…`) and Podman's are left out of the LAN, so a container reaches this machine only on public ports, and never the dashboard. To let containers reach a program on the host, add a rule with their subnet, for example `sources = ["172.16.0.0/12"]` and the program's port.
+
 Packets are checked in this order: addresses on the `allow` list skip the blocklists; then `block`, blocklists, countries and bans drop what they match; then the LAN, your rules, rate limits and public ports accept what they match; everything else is dropped without an answer. Private, loopback and other non-public ranges are never dropped by lists or bans, so a feed that lists them can't cut off your LAN.
 
 **Blocklists** are plain text with one address or network per line (comments after `#` or `;` are fine), or Spamhaus's JSON format. They are downloaded over HTTPS on their schedule and cached in the data directory, so a restart doesn't wait for the network. The dashboard suggests Spamhaus DROP, FireHOL level 1 and abuse.ch Feodo Tracker.
