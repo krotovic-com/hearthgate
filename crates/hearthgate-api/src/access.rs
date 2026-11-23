@@ -139,11 +139,41 @@ pub fn is_private_net(net: &Net) -> bool {
 }
 
 /// This machine's private addresses and their networks (no loopback, no
-/// IPv6 link-local, which cannot be bound without a scope).
+/// IPv6 link-local, which cannot be bound without a scope), without the
+/// bridges of container engines: containers are not the LAN, so they get
+/// neither the LAN's firewall allowance nor the dashboard.
 #[must_use]
 pub fn detect_lan() -> Vec<(IpAddr, Net)> {
+    detect(|name| !is_container_bridge(name))
+}
+
+/// The networks of container engine bridges on this machine (Docker,
+/// Podman, CNI), for routes that VPN devices with full access need.
+#[must_use]
+pub fn detect_container_networks() -> Vec<(IpAddr, Net)> {
+    detect(is_container_bridge)
+}
+
+/// Whether an interface is a container engine's bridge: Docker's `docker0`
+/// and `br-` plus the 12-character network id, Podman's and CNI's bridges.
+/// Bridges that Docker networks name themselves are not recognised.
+#[must_use]
+pub fn is_container_bridge(name: &str) -> bool {
+    let docker_network = name.strip_prefix("br-").is_some_and(|id| {
+        id.len() == 12
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    });
+    docker_network || name == "docker0" || name.starts_with("podman") || name.starts_with("cni")
+}
+
+fn detect(include: impl Fn(&str) -> bool) -> Vec<(IpAddr, Net)> {
     let mut found = Vec::new();
     for iface in if_addrs::get_if_addrs().unwrap_or_default() {
+        if !include(&iface.name) {
+            continue;
+        }
         let ip = iface.ip();
         if ip.is_loopback() || !is_private(ip) {
             continue;
@@ -589,6 +619,30 @@ mod tests {
         assert!(is_private_net(&net("10.0.0.0/8")));
         assert!(!is_private_net(&net("0.0.0.0/0")));
         assert!(!is_private_net(&net("100.0.0.0/8")));
+    }
+
+    #[test]
+    fn container_bridges_are_not_lan() {
+        for name in [
+            "docker0",
+            "br-3f2a9c1e5b7d",
+            "podman0",
+            "cni-podman0",
+            "cni0",
+        ] {
+            assert!(is_container_bridge(name), "{name}");
+        }
+        for name in [
+            "eth0",
+            "br0",
+            "br-lan",
+            "br-3f2a9c1e5b7",
+            "br-3F2A9C1E5B7D",
+            "wg0",
+            "hg0",
+        ] {
+            assert!(!is_container_bridge(name), "{name}");
+        }
     }
 
     #[test]

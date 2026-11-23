@@ -132,6 +132,7 @@ pub(crate) fn run(bootstrap: &Bootstrap, action: VpnCommand) -> Result<ExitCode>
             let pair = hearthgate_vpn::keys::generate()?;
             let lan: Vec<ipnet::IpNet> = hearthgate_api::access::detect_lan()
                 .into_iter()
+                .chain(hearthgate_api::access::detect_container_networks())
                 .map(|(_, net)| net)
                 .filter(|net| !matches!(net, ipnet::IpNet::V4(v4) if state.vpn.subnet.contains(v4)))
                 .collect();
