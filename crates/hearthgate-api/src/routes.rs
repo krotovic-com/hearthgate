@@ -43,7 +43,7 @@ use crate::auth::Principal;
         crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
         crate::docker::updates, crate::notify::test,
         crate::ai::info, crate::ai::put_key, crate::ai::preview, crate::ai::review,
-        crate::ai::reviews, crate::ai::fix_draft,
+        crate::ai::reviews, crate::ai::fix_draft, crate::ai::chat, crate::ai::proposal_draft,
         crate::updates::info, crate::updates::check, crate::updates::install,
         crate::updates::unschedule, crate::updates::rollback, crate::updates::skip,
         crate::updates::unskip, crate::updates::history, crate::updates::progress
@@ -67,7 +67,11 @@ use crate::auth::Principal;
         crate::vpn::PeerConfigResponse, crate::docker::DockerInfo, crate::notify::TestResult,
         crate::ai::AiInfo, crate::ai::ProviderInfo, crate::ai::KeyRequest,
         crate::ai::ReviewRequest, crate::ai::PreviewRequest, crate::ai::AiPreview,
-        crate::ai::FixDraft, hearthgate_ai::Review, hearthgate_ai::Finding, hearthgate_ai::Fix,
+        crate::ai::FixDraft, crate::ai::ChatRequest, crate::ai::ProposalDraftRequest,
+        hearthgate_ai::ChatReply, hearthgate_ai::ChatTurn, hearthgate_ai::ChatRole,
+        hearthgate_ai::ChatContext, hearthgate_ai::chat::ChatDialog,
+        hearthgate_ai::chat::DialogField, hearthgate_ai::Proposal, hearthgate_ai::Plan,
+        hearthgate_ai::PlanStep, hearthgate_ai::Review, hearthgate_ai::Finding, hearthgate_ai::Fix,
         hearthgate_ai::PatchOp, hearthgate_ai::patch::Op, hearthgate_ai::Scope,
         hearthgate_ai::Severity, hearthgate_ai::Outgoing,
         hearthgate_update::UpdateInfo, hearthgate_update::updater::Available,
@@ -149,6 +153,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/ai/preview", post(crate::ai::preview))
         .route("/api/v1/ai/review", post(crate::ai::review))
         .route("/api/v1/ai/reviews", get(crate::ai::reviews))
+        .route("/api/v1/ai/chat", post(crate::ai::chat))
+        .route("/api/v1/ai/chat/draft", post(crate::ai::proposal_draft))
         .route(
             "/api/v1/ai/reviews/{id}/findings/{index}/draft",
             post(crate::ai::fix_draft),

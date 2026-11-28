@@ -29,6 +29,16 @@
     }
   });
 
+  // /interfaces?edit=<name> opens that interface (from Ask AI's Open in form).
+  $effect(() => {
+    const name = param('edit');
+    if (name && gw.loaded) {
+      editing = draft.interfaces.find((i) => i.name === name) ?? null;
+      editorOpen = editing !== null;
+      navigate('/interfaces', true);
+    }
+  });
+
   const interfaces = $derived(draft.interfaces);
   const ports = $derived(interfaces.flatMap((i) => i.listeners));
   const unhealthy = $derived(

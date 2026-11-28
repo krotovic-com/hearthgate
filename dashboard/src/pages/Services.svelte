@@ -32,6 +32,16 @@
     }
   });
 
+  // /services?edit=<name> opens that service's editor (from Ask AI).
+  $effect(() => {
+    const name = param('edit');
+    if (name && gw.loaded) {
+      editing = draft.services.find((s) => s.name === name) ?? null;
+      editorOpen = editing !== null;
+      navigate(editing ? `/services/${encodeURIComponent(name)}` : '/services', true);
+    }
+  });
+
   const services = $derived(draft.services);
   const isPublic = (s: Service) => routesUsingService(s.name).length > 0;
   const shown = $derived(

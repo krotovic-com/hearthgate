@@ -10,7 +10,7 @@ This is the plan for building Hearthgate from the first skeleton (v0.1.0) to a 1
 | 4 | Built-in VPN and internal DNS | 1.0 | Done | VPN peers |
 | 5 | Managed Docker containers and stacks | 1.0 | Done | Containers, logs |
 | 6 | Hardening and 1.0 | 1.0 | Done | Dark mode, backups, notifications |
-| 7 | Optional AI assistant | 1.1 | Done | AI review, "Review rules with AI" |
+| 7 | Optional AI assistant | 1.1 | Done | AI review, "Review rules with AI", Ask AI panel |
 
 Phases 3, 4 and 5 depend only on Phase 1 and 2, so their order can be swapped if priorities change. AI is deliberately last: it reviews and explains everything the earlier phases build, so it needs them to exist and be stable.
 

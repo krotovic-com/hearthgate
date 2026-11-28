@@ -4,8 +4,10 @@
   import logoDark from '../logo-on-dark.svg';
   import { route } from '../router.svelte';
   import type { StatusResponse } from '../api';
+  import { askai, toggleAskAi } from '../askai.svelte';
 
-  let { status }: { status: StatusResponse | null } = $props();
+  let { status, inert = false }: { status: StatusResponse | null; inert?: boolean } = $props();
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   const items: { href: string; label: string; icon: IconName }[] = [
     { href: '/', label: 'Overview', icon: 'overview' },
@@ -27,7 +29,7 @@
   const down = $derived(status?.upstreams.filter((u) => !u.healthy || u.ejected).length ?? 0);
 </script>
 
-<nav class="sidebar" aria-label="Main">
+<nav class="sidebar" aria-label="Main" {inert}>
   <a href="/" class="logo"
     ><img src={logo} alt="Hearthgate" width="157" height="26" class="on-light" /><img
       src={logoDark}
@@ -47,6 +49,17 @@
       </li>
     {/each}
   </ul>
+  <button
+    type="button"
+    class="launcher strong"
+    aria-pressed={askai.open}
+    aria-keyshortcuts={mac ? 'Meta+J' : 'Control+J'}
+    onclick={() => toggleAskAi()}
+  >
+    <Icon name="ai" />
+    Ask AI
+    <kbd class="mono-small">{mac ? '⌘J' : 'Ctrl J'}</kbd>
+  </button>
   <div class="status" aria-live="polite">
     {#if status}
       <p class="state strong">
@@ -119,8 +132,34 @@
     background: var(--hg-color-accent-subtle);
     color: var(--hg-color-text-link);
   }
-  .status {
+  .launcher {
     margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--hg-spacing-sm);
+    padding: var(--hg-spacing-sm) var(--hg-spacing-md);
+    margin-bottom: var(--hg-spacing-sm);
+    border: 1px solid var(--hg-color-border-default);
+    border-radius: var(--hg-radius-md);
+    background: var(--hg-color-bg-surface);
+    color: var(--hg-color-text-link);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .launcher:hover,
+  .launcher[aria-pressed='true'] {
+    background: var(--hg-color-accent-subtle);
+    border-color: var(--hg-color-accent-default);
+  }
+  .launcher kbd {
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: var(--hg-color-bg-canvas);
+    color: var(--hg-color-text-secondary);
+  }
+  .status {
     display: flex;
     flex-direction: column;
     gap: 6px;

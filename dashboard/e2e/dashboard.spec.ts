@@ -466,6 +466,131 @@ test.describe.serial("dashboard", () => {
     }
   });
 
+  test("Ask AI: docked chat with context, changes only when applied", async ({
+    page,
+  }) => {
+    const bodies: string[] = [];
+    const fake = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        bodies.push(body);
+        const answer =
+          bodies.length === 1
+            ? {
+                reply: "Let's set up the wiki. First, the service.",
+                proposals: [
+                  {
+                    kind: "service",
+                    title: "Add the wiki service",
+                    summary: "An external service on port 8090.",
+                    step: 1,
+                    changes: [
+                      {
+                        op: "add",
+                        path: "/services/-",
+                        value_json: JSON.stringify({
+                          name: "wiki",
+                          kind: "external",
+                          host: "127.0.0.1",
+                          ports: { http: 8090 },
+                        }),
+                      },
+                    ],
+                  },
+                ],
+                plan: {
+                  title: "Publish the wiki",
+                  steps: [
+                    { title: "Add the service", detail: "", done: false },
+                    { title: "Add a route", detail: "", done: false },
+                  ],
+                },
+                suggestions: ["What next?"],
+              }
+            : {
+                reply: "Fill in the name and the address, then save.",
+                proposals: [],
+                plan: { title: "", steps: [] },
+                suggestions: [],
+              };
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(answer) } }],
+          }),
+        );
+      });
+    });
+    await new Promise<void>((ok) => fake.listen(0, "127.0.0.1", ok));
+    const port = (fake.address() as AddressInfo).port;
+    try {
+      await login(page);
+      await page.goto(`${server().baseURL}/settings?section=ai`);
+      await page
+        .getByLabel("Endpoint", { exact: true })
+        .fill(`http://127.0.0.1:${port}/v1`);
+      await page.getByLabel("Endpoint", { exact: true }).press("Tab");
+      await applyDraft(page, String(port));
+
+      await page.getByRole("link", { name: "Services", exact: true }).click();
+      await page.keyboard.press("ControlOrMeta+j");
+      const panel = page.getByRole("complementary", { name: "Ask AI" });
+      await expect(panel).toBeVisible();
+      await expect(panel.getByLabel("Message Ask AI")).toBeFocused();
+      await expect(panel.getByLabel("What Ask AI can see")).toContainText(
+        "Services",
+      );
+      await accessible(page);
+
+      await panel.getByLabel("Message Ask AI").fill("Help me publish a wiki");
+      await panel.getByLabel("Message Ask AI").press("Enter");
+      await expect(panel.getByText("First, the service.")).toBeVisible();
+      await expect(panel.getByText("Publish the wiki")).toBeVisible();
+      await expect(panel.getByText("0 of 2 done")).toBeVisible();
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toContain("Services");
+      expect(bodies[0]).not.toContain(DOMAIN);
+      await accessible(page);
+
+      // Nothing changed yet.
+      const main = page.locator("main");
+      await expect(main.getByText("wiki", { exact: true })).toHaveCount(0);
+      await panel.getByRole("button", { name: "Apply" }).click();
+      await expect(panel.getByText(/Applied · revision \d+/)).toBeVisible();
+      await expect(main.getByText("wiki", { exact: true }).first()).toBeVisible();
+
+      // The panel stays usable beside a dialog, and sees it.
+      await main.getByRole("button", { name: "Add service" }).click();
+      const dialog = page.getByRole("dialog", { name: "Add a service" });
+      await expect(dialog).toBeVisible();
+      await expect(panel.getByLabel("What Ask AI can see")).toContainText(
+        "Dialog: Add a service",
+      );
+      await accessible(page);
+      await panel.getByLabel("Message Ask AI").fill("What goes in here?");
+      await panel.getByLabel("Message Ask AI").press("Enter");
+      await expect(panel.getByText("Fill in the name")).toBeVisible();
+      expect(bodies[1]).toContain("Add a service");
+      expect(bodies[1]).toContain("Add the wiki service");
+      await page.screenshot({ path: "test-results/ask-ai.png" });
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await expect(dialog).toBeHidden();
+
+      // The chat survives moving around, and the change can be undone.
+      await page.getByRole("link", { name: "Routes", exact: true }).click();
+      await expect(panel.getByText("You opened Routes")).toBeVisible();
+      await panel.getByRole("button", { name: "Undo" }).click();
+      await expect(panel.getByText("Undone", { exact: true })).toBeVisible();
+      await page.getByRole("link", { name: "Services", exact: true }).click();
+      await expect(main.getByText("wiki", { exact: true })).toHaveCount(0);
+      await panel.getByRole("button", { name: "Close Ask AI" }).click();
+      await expect(panel).toBeHidden();
+    } finally {
+      fake.close();
+    }
+  });
+
   test("a firewall change is kept once the dashboard confirms it", async ({
     page,
   }) => {

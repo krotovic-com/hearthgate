@@ -6,11 +6,13 @@
 //! and secrets leave the machine as placeholders, and answers are mapped
 //! back locally.
 
+pub mod chat;
 pub mod patch;
 pub mod provider;
 pub mod redact;
 pub mod review;
 
+pub use chat::{ChatContext, ChatReply, ChatRole, ChatTurn, Plan, PlanStep, Proposal};
 pub use patch::{PatchError, PatchOp};
 pub use provider::{Client, Outgoing, Prompt};
 pub use redact::Redactor;

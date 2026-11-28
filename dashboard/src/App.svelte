@@ -22,6 +22,9 @@
   import { route } from './lib/router.svelte';
   import { live, connectLive } from './lib/live.svelte';
   import { gw, loadGateway } from './lib/gateway.svelte';
+  import AskAiPanel from './lib/askai/AskAiPanel.svelte';
+  import { askai, setDialog, setScreen, toggleAskAi } from './lib/askai.svelte';
+  import { overlays } from './lib/overlay.svelte';
 
   const user = $derived(session.info?.user ?? null);
 
@@ -64,6 +67,42 @@
     document.title = page && user ? `${page.title} · Hearthgate` : 'Hearthgate';
   });
 
+  // Ask AI follows the user: the screen, the item selected on it (the
+  // second part of the address, or a settings section) and the open dialog.
+  const selection = $derived.by(() => {
+    const item = route.path.split('/')[2];
+    if (item && item !== 'new') return decodeURIComponent(item);
+    return section === '/settings' ? new URLSearchParams(route.search).get('section') : null;
+  });
+  $effect(() => {
+    if (!user) return;
+    setScreen({ title: page?.title ?? 'Page not found', path: route.path, selection });
+  });
+  $effect(() => {
+    setDialog(overlays.top?.title ?? null);
+  });
+
+  let panel: ReturnType<typeof AskAiPanel> | undefined = $state();
+  const PANEL_WIDTH = 420;
+  let wasOpen = askai.open;
+  $effect(() => {
+    const open = !!user && askai.open;
+    document.documentElement.style.setProperty('--hg-askai-width', open ? `${PANEL_WIDTH}px` : '0px');
+    // Focus the message box when the user opens the panel (not when a
+    // reload restores it open).
+    if (open && !wasOpen) queueMicrotask(() => panel?.focus());
+    wasOpen = open;
+  });
+
+  // ⌘J or Ctrl+J opens and closes the panel, from anywhere.
+  function shortcut(event: KeyboardEvent) {
+    if (!user || event.key.toLowerCase() !== 'j' || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+    event.preventDefault();
+    toggleAskAi();
+  }
+
+  const dialogOpen = $derived(overlays.stack.length > 0);
+
   // Move focus to the new page's heading after navigation, for screen
   // reader and keyboard users.
   let main: HTMLElement | undefined = $state();
@@ -77,6 +116,8 @@
     queueMicrotask(() => main?.querySelector<HTMLElement>('h1')?.focus());
   });
 </script>
+
+<svelte:window onkeydown={shortcut} />
 
 <a class="skip" href="#main">Skip to content</a>
 
@@ -92,9 +133,9 @@
 {:else if !user}
   <Login />
 {:else}
-  <div class="shell">
-    <Sidebar status={live.status} />
-    <main class="main" id="main" bind:this={main}>
+  <div class="shell" class:with-panel={askai.open} style:--panel-width="{PANEL_WIDTH}px">
+    <Sidebar status={live.status} inert={dialogOpen} />
+    <main class="main" id="main" bind:this={main} inert={dialogOpen}>
       <div class="account">
         {#if !live.connected && live.status}
           <span class="small secondary" role="status">Live updates paused, reconnecting…</span>
@@ -114,6 +155,11 @@
       {/if}
       <DraftBar />
     </main>
+    {#if askai.open}
+      <aside class="askai" aria-label="Ask AI">
+        <AskAiPanel bind:this={panel} />
+      </aside>
+    {/if}
   </div>
 {/if}
 
@@ -142,6 +188,25 @@
     gap: var(--hg-spacing-xl);
     padding: var(--hg-spacing-2xl);
     max-width: 1280px;
+  }
+  .askai {
+    flex: none;
+    width: var(--panel-width);
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    border-left: 1px solid var(--hg-color-border-default);
+    /* Above dialog backdrops: the panel stays usable while one is open. */
+    z-index: 150;
+  }
+  /* Narrow windows: the panel covers the page instead of pushing it. */
+  @media (max-width: 1100px) {
+    .askai {
+      position: fixed;
+      right: 0;
+      width: min(var(--panel-width), 100vw);
+      box-shadow: -8px 0 32px rgb(11 20 38 / 0.16);
+    }
   }
   .main :global(h1) {
     outline: none;
