@@ -1,0 +1,83 @@
+# Example data for the website screenshots (scripts/site-screenshots/run.sh).
+[[interfaces]]
+name = "web"
+domains = ["cloud.example.com", "media.example.com", "home.example.com"]
+certificate = "home"
+listeners = [
+  { port = 80, mode = "http" },
+  { port = 443, mode = "https" },
+]
+
+[[interfaces]]
+name = "ssh"
+listeners = [{ port = 2222, mode = "raw" }]
+
+[[services]]
+name = "nextcloud"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 8081 }
+health = { type = "http", path = "/", interval = "5s" }
+
+[[services]]
+name = "jellyfin"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 8082 }
+health = { type = "http", path = "/", interval = "5s" }
+
+[[services]]
+name = "jellyfin-2"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 8083 }
+health = { type = "http", path = "/", interval = "5s" }
+
+[[services]]
+name = "home-assistant"
+kind = "external"
+host = "127.0.0.1"
+ports = { http = 8084 }
+health = { type = "http", path = "/", interval = "5s" }
+
+[[services]]
+name = "sshd"
+kind = "external"
+host = "127.0.0.1"
+ports = { ssh = 8022 }
+
+[[routes]]
+name = "cloud"
+interface = "web"
+listener = 443
+hosts = ["cloud.example.com"]
+targets = [{ service = "nextcloud", port = "http" }]
+
+[[routes]]
+name = "media"
+interface = "web"
+listener = 443
+hosts = ["media.example.com"]
+targets = [
+  { service = "jellyfin", port = "http" },
+  { service = "jellyfin-2", port = "http" },
+]
+
+[[routes]]
+name = "home"
+interface = "web"
+listener = 443
+hosts = ["home.example.com"]
+targets = [{ service = "home-assistant", port = "http" }]
+
+[[routes]]
+name = "ssh"
+interface = "ssh"
+listener = 2222
+targets = [{ service = "sshd", port = "ssh" }]
+
+[ai]
+enabled = true
+provider = "openai-compatible"
+model = "llama3.3:70b"
+endpoint = "http://127.0.0.1:9900/v1"
