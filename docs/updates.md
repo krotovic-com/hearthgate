@@ -44,7 +44,7 @@ The gateway runs as an unprivileged user in a read-only sandbox and can't replac
 
 So a compromised gateway can at most ask for a validly signed, newer Hearthgate release to be installed. Follow an install on the server with `journalctl -fu hearthgate-upgrade`.
 
-The packages and `install.sh` install and enable these units. Releases before 1.3 don't have them, so upgrade those once by hand (see [Backups and upgrades](backups.md)); every update after that works from the dashboard. Builds you installed some other way show available updates but leave installing to you.
+The packages and `install.sh` install and enable these units. Releases before 1.2 don't have them, so upgrade those once by hand (see [Backups and upgrades](backups.md)); every update after that works from the dashboard. Builds you installed some other way show available updates but leave installing to you.
 
 ## From the command line
 
