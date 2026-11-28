@@ -219,8 +219,18 @@ impl Updater {
     /// Everything the dashboard shows.
     #[must_use]
     pub fn info(&self) -> UpdateInfo {
-        self.absorb_jobs();
-        let m = self.memory.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let mut m = self.memory.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        // Rolled-back versions count as skipped before the loop records it.
+        for job in self.history().into_iter().filter(|j| j.started_unix > m.seen_job) {
+            if job.outcome == Outcome::RolledBack
+                && let Some(v) = job.to
+            {
+                m.skipped.insert(v);
+                if m.scheduled == Some(v) {
+                    m.scheduled = None;
+                }
+            }
+        }
         let cannot = self.cannot_install();
         UpdateInfo {
             current: self.current_text.clone(),
@@ -279,6 +289,11 @@ impl Updater {
         });
         drop(busy);
         result.map(|_| self.info())
+    }
+
+    /// The newest release if it is newer, without remembering anything.
+    pub async fn latest(&self) -> Result<Option<Available>, String> {
+        self.fetch_available().await
     }
 
     async fn fetch_available(&self) -> Result<Option<Available>, String> {
@@ -371,6 +386,7 @@ impl Updater {
         if let Some(why) = self.cannot_install() {
             return Err(why);
         }
+        self.absorb_jobs();
         let available = self.memory.lock().unwrap_or_else(PoisonError::into_inner).available.clone();
         if available.as_ref().map(|a| a.version) != Some(version) {
             return Err(format!("{version} is not the newest release; check for updates first"));

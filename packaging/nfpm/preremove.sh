@@ -8,6 +8,6 @@ case "$1" in
   upgrade | 1) exit 0 ;;
 esac
 if [ -d /run/systemd/system ]; then
-  systemctl disable --now hearthgate >/dev/null 2>&1 || true
+  systemctl disable --now hearthgate-upgrade.path hearthgate >/dev/null 2>&1 || true
 fi
 exit 0

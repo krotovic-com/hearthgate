@@ -19,6 +19,7 @@ mod routes;
 mod secret;
 pub mod tls;
 mod ui;
+pub mod updates;
 pub mod vpn;
 
 use std::net::{IpAddr, SocketAddr};
@@ -95,6 +96,8 @@ pub struct ApiState {
     pub docker: Arc<hearthgate_docker::Manager>,
     /// The optional AI assistant's key and reviews.
     pub ai: Arc<ai::Assistant>,
+    /// Updates of Hearthgate itself.
+    pub updates: Arc<hearthgate_update::Updater>,
 }
 
 impl ApiState {

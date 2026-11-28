@@ -109,6 +109,8 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         ));
     }
 
+    let started_unix = hearthgate_update::state::now_unix();
+    let updater = crate::update::updater(&bootstrap);
     let runtime = Arc::new(RwLock::new(RuntimeInfo::default()));
     let api_changed = Arc::new(Notify::new());
     let live = Arc::new(hearthgate_api::Live::new(logs));
@@ -146,9 +148,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         Arc::clone(&gateway),
         stop.clone(),
     ));
-    if bootstrap.updates.check {
-        tokio::spawn(crate::update::run(stop.clone()));
-    }
+    crate::update::spawn(Arc::clone(&updater), stop.clone());
     tokio::spawn(crate::backup::run(
         bootstrap.data_dir.clone(),
         bootstrap.backup.clone(),
@@ -172,6 +172,7 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
                 &router,
                 &vpn_runtime,
                 &docker_manager,
+                &updater,
                 &stop,
             )
             .await?,
@@ -241,6 +242,10 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
         cert_specs: Vec::new(),
         cert_notes: Vec::new(),
         bind_errors: Vec::new(),
+        updater,
+        updates_check: bootstrap.updates.check,
+        started_unix,
+        health_written: false,
         gateway,
         applied: None,
         retry_at: None,
@@ -328,6 +333,12 @@ struct Daemon {
     cert_specs: Vec<CertSpec>,
     cert_notes: Vec<String>,
     bind_errors: Vec<String>,
+    updater: Arc<hearthgate_update::Updater>,
+    /// `updates.check` from the bootstrap file, which wins.
+    updates_check: bool,
+    started_unix: u64,
+    /// Whether the health report for the upgrade helper is written.
+    health_written: bool,
     gateway: Arc<Gateway>,
     /// Revision running now; 0 stands for "no revisions yet".
     applied: Option<i64>,
@@ -405,6 +416,9 @@ impl Daemon {
             fw.clone_from(&state.firewall);
             changed
         });
+        let mut updates = state.updates.clone();
+        updates.check &= self.updates_check;
+        self.updater.set_settings(updates);
         self.health.update(
             health::jobs(&state, self.gateway.upstreams()),
             self.gateway.upstreams(),
@@ -439,6 +453,29 @@ impl Daemon {
         }
         self.applied = Some(key);
         self.publish_runtime();
+        self.write_health();
+    }
+
+    /// Tells the upgrade helper, once, that this version came up. Only a
+    /// firewall that did not load fails it: listeners that don't bind
+    /// usually fail on the old version too.
+    fn write_health(&mut self) {
+        if self.health_written {
+            return;
+        }
+        self.health_written = true;
+        let mut problems = self.bind_errors.clone();
+        problems.extend(self.firewall.problem.iter().cloned());
+        let ok = self.firewall.problem.is_none();
+        if let Err(e) = hearthgate_update::state::write_health(
+            self.updater.layout(),
+            crate::VERSION,
+            self.started_unix,
+            ok,
+            problems,
+        ) {
+            warn!("cannot write the health report for updates: {e}");
+        }
     }
 
     fn publish_runtime(&self) {
@@ -563,6 +600,7 @@ async fn start_admin(
     router: &Arc<hearthgate_upnp::Router>,
     vpn: &Arc<hearthgate_vpn::Runtime>,
     docker: &Arc<hearthgate_docker::Manager>,
+    updater: &Arc<hearthgate_update::Updater>,
     stop: &CancellationToken,
 ) -> Result<Arc<hearthgate_api::AccessControl>> {
     use hearthgate_api::access::{Resolved, Source, TlsMode};
@@ -620,6 +658,7 @@ async fn start_admin(
         vpn: Arc::clone(vpn),
         docker: Arc::clone(docker),
         ai: Arc::new(hearthgate_api::ai::Assistant::new(&bootstrap.data_dir)),
+        updates: Arc::clone(updater),
     };
     tokio::spawn(hearthgate_api::ai::run_weekly(api.clone(), stop.clone()));
     let wanted = {

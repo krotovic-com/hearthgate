@@ -46,7 +46,9 @@ pub struct Bootstrap {
 #[serde(deny_unknown_fields)]
 pub struct Updates {
     /// Ask GitHub once a day whether a newer release exists, and log and
-    /// notify when it does. Nothing is ever installed by itself.
+    /// notify when it does. `false` turns checks off whatever the dashboard
+    /// says; what installs by itself is set in the dashboard (`[updates]`
+    /// in the desired state), and nothing does unless you turn it on.
     #[serde(default = "default_true")]
     pub check: bool,
 }

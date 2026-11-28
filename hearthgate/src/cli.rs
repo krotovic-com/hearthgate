@@ -76,6 +76,31 @@ pub enum VpnCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum UpdateCommand {
+    /// Show the installed version, a newer release and the last install.
+    Status,
+    /// Ask GitHub for the newest release (changes nothing).
+    Check,
+    /// Download, verify and install the newest release, with a backup and
+    /// an automatic rollback if it doesn't come up healthy. Needs root.
+    Install {
+        /// The version to install (default: the newest).
+        version: Option<String>,
+    },
+    /// Go back to the version kept from the last update. Needs root.
+    Rollback,
+    /// Past installs and rollbacks.
+    History,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UpgradeCommand {
+    /// Carry out the request the gateway wrote. Run by
+    /// hearthgate-upgrade.service, as root.
+    Apply,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum AiCommand {
     /// Show the assistant's settings and whether a key is stored.
     Status,
@@ -207,6 +232,17 @@ pub enum Command {
         #[command(subcommand)]
         action: AiCommand,
     },
+    /// Updates of Hearthgate itself: check, install, roll back.
+    Update {
+        #[command(subcommand)]
+        action: UpdateCommand,
+    },
+    /// The root upgrade helper (what hearthgate-upgrade.service runs).
+    #[command(hide = true)]
+    Upgrade {
+        #[command(subcommand)]
+        action: UpgradeCommand,
+    },
     /// Back up the state, certificates and keys, or restore a backup.
     Backup {
         #[command(subcommand)]
@@ -321,6 +357,10 @@ impl Cli {
             Command::Vpn { action } => crate::cli_vpn::run(&bootstrap, action),
             Command::Docker { action } => crate::cli_docker::run(&bootstrap, action),
             Command::Ai { action } => crate::cli_ai::run(&bootstrap, action),
+            Command::Update { action } => crate::update::run(&bootstrap, action),
+            Command::Upgrade {
+                action: UpgradeCommand::Apply,
+            } => crate::update::apply(&bootstrap),
             Command::Backup { action } => backup(&bootstrap, action),
             Command::Openapi => {
                 use hearthgate_api::ApiDoc;

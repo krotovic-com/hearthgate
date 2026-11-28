@@ -33,6 +33,14 @@ contents:
     dst: /usr/lib/systemd/system/hearthgate.service
     file_info:
       mode: 0644
+  - src: target/package/hearthgate-upgrade.service
+    dst: /usr/lib/systemd/system/hearthgate-upgrade.service
+    file_info:
+      mode: 0644
+  - src: packaging/systemd/hearthgate-upgrade.path
+    dst: /usr/lib/systemd/system/hearthgate-upgrade.path
+    file_info:
+      mode: 0644
   - src: packaging/systemd/hearthgate.sysusers
     dst: /usr/lib/sysusers.d/hearthgate.conf
     file_info:

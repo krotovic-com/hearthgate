@@ -368,13 +368,18 @@ impl Helper<'_> {
     }
 
     fn rpm_install(&self, job: &mut Job, file: &str) -> Result<(), String> {
+        // The helper has no network: only the local file, no repositories.
         if self.at("/usr/bin/dnf").exists() {
-            self.sh(job, "dnf", &["install", "-y", file]).map(drop)
+            self.sh(job, "dnf", &["install", "-y", "--disablerepo=*", "--allowerasing", file]).map(drop)
         } else if self.at("/usr/bin/zypper").exists() {
-            self.sh(job, "zypper", &["--non-interactive", "install", "--allow-unsigned-rpm", "--oldpackage", file])
-                .map(drop)
+            self.sh(
+                job,
+                "zypper",
+                &["--non-interactive", "--no-refresh", "install", "--allow-unsigned-rpm", "--oldpackage", file],
+            )
+            .map(drop)
         } else {
-            self.sh(job, "yum", &["install", "-y", file]).map(drop)
+            self.sh(job, "yum", &["install", "-y", "--disablerepo=*", file]).map(drop)
         }
     }
 

@@ -23,6 +23,8 @@ hearthgate-upnp.workspace = true
 hearthgate-vpn.workspace = true
 hearthgate-docker.workspace = true
 hearthgate-notify.workspace = true
+hearthgate-update.workspace = true
+jiff = "0.2"
 serde_json.workspace = true
 flate2 = "1"
 tar = { version = "0.4", default-features = false }

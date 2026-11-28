@@ -185,7 +185,9 @@ pub struct Health {
     pub version: String,
     pub pid: u32,
     pub started_unix: u64,
-    /// False when listeners did not bind or the firewall did not load.
+    /// False when the firewall did not load: without it nothing should be
+    /// exposed, so the update is rolled back. Other problems are listed but
+    /// don't fail it, since the old version would have them too.
     pub ok: bool,
     pub problems: Vec<String>,
 }
@@ -204,12 +206,18 @@ pub struct Backup {
 }
 
 /// Writes the daemon's health report for the helper.
-pub fn write_health(layout: &Layout, version: &str, started_unix: u64, problems: Vec<String>) -> std::io::Result<()> {
+pub fn write_health(
+    layout: &Layout,
+    version: &str,
+    started_unix: u64,
+    ok: bool,
+    problems: Vec<String>,
+) -> std::io::Result<()> {
     let health = Health {
         version: version.to_owned(),
         pid: std::process::id(),
         started_unix,
-        ok: problems.is_empty(),
+        ok,
         problems,
     };
     crate::files::ensure_dir(&layout.updates(), 0o700)?;

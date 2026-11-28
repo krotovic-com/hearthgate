@@ -24,11 +24,11 @@ pub mod method;
 pub mod notes;
 pub mod policy;
 pub mod state;
-mod updater;
+pub mod updater;
 pub mod verify;
 pub mod version;
 
-pub use updater::{UpdateInfo, Updater};
+pub use updater::{Config, UpdateInfo, Updater};
 pub use version::{Bump, Version};
 
 /// The repository releases come from. Never configurable.

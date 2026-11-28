@@ -43,7 +43,10 @@ use crate::auth::Principal;
         crate::docker::update_stack, crate::docker::logs, crate::docker::stats,
         crate::docker::updates, crate::notify::test,
         crate::ai::info, crate::ai::put_key, crate::ai::preview, crate::ai::review,
-        crate::ai::reviews, crate::ai::fix_draft
+        crate::ai::reviews, crate::ai::fix_draft,
+        crate::updates::info, crate::updates::check, crate::updates::install,
+        crate::updates::unschedule, crate::updates::rollback, crate::updates::skip,
+        crate::updates::unskip, crate::updates::history, crate::updates::progress
     ),
     components(schemas(
         StatusResponse, ListenerStatus, UpstreamStatus, StateResponse, ApplyRequest,
@@ -66,7 +69,14 @@ use crate::auth::Principal;
         crate::ai::ReviewRequest, crate::ai::PreviewRequest, crate::ai::AiPreview,
         crate::ai::FixDraft, hearthgate_ai::Review, hearthgate_ai::Finding, hearthgate_ai::Fix,
         hearthgate_ai::PatchOp, hearthgate_ai::patch::Op, hearthgate_ai::Scope,
-        hearthgate_ai::Severity, hearthgate_ai::Outgoing
+        hearthgate_ai::Severity, hearthgate_ai::Outgoing,
+        hearthgate_update::UpdateInfo, hearthgate_update::updater::Available,
+        hearthgate_update::state::Job, hearthgate_update::state::Step,
+        hearthgate_update::state::StepState, hearthgate_update::state::Outcome,
+        hearthgate_update::state::Action, hearthgate_update::method::Method,
+        hearthgate_update::notes::Note, hearthgate_update::notes::NoteKind,
+        hearthgate_update::Bump, hearthgate_model::Updates, hearthgate_model::AutoInstall,
+        crate::updates::InstallRequest, crate::updates::VersionRequest, crate::updates::When
     )),
     modifiers(&Security),
     tags(
@@ -76,7 +86,8 @@ use crate::auth::Principal;
         (name = "firewall", description = "Firewall status, bans and change confirmation"),
         (name = "vpn", description = "VPN status and new peer configurations"),
         (name = "docker", description = "Managed containers and stacks"),
-        (name = "ai", description = "The optional AI assistant: reviews, troubleshooting and fixes")
+        (name = "ai", description = "The optional AI assistant: reviews, troubleshooting and fixes"),
+        (name = "updates", description = "Updates of Hearthgate itself")
     )
 )]
 pub struct ApiDoc;
@@ -142,6 +153,15 @@ pub fn router(state: ApiState) -> Router {
             "/api/v1/ai/reviews/{id}/findings/{index}/draft",
             post(crate::ai::fix_draft),
         )
+        .route("/api/v1/updates", get(crate::updates::info))
+        .route("/api/v1/updates/check", post(crate::updates::check))
+        .route("/api/v1/updates/install", post(crate::updates::install))
+        .route("/api/v1/updates/scheduled", axum::routing::delete(crate::updates::unschedule))
+        .route("/api/v1/updates/rollback", post(crate::updates::rollback))
+        .route("/api/v1/updates/skip", post(crate::updates::skip))
+        .route("/api/v1/updates/unskip", post(crate::updates::unskip))
+        .route("/api/v1/updates/history", get(crate::updates::history))
+        .route("/api/v1/updates/progress", get(crate::updates::progress))
         .route("/api/v1/docker", get(crate::docker::info))
         .route("/api/v1/docker/updates", get(crate::docker::updates))
         .route(

@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch for Hearthgate update requests from the dashboard
+Documentation=https://github.com/krotovic-com/hearthgate/blob/main/docs/updates.md
+
+[Path]
+# Written by the (unprivileged) gateway when you install or roll back an
+# update. The helper deletes it before doing anything else.
+PathExists=/var/lib/hearthgate/updates/request.json
+Unit=hearthgate-upgrade.service
+
+[Install]
+WantedBy=multi-user.target

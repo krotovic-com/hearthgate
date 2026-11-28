@@ -72,6 +72,29 @@ jobs:
         if: steps.version.outputs.version != ''
         run: scripts/build-release.sh "${{ steps.version.outputs.version }}"
 
+      - name: Sign SHA256SUMS
+        if: steps.version.outputs.version != ''
+        env:
+          SIGNING_KEY: ${{ secrets.HEARTHGATE_SIGNING_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.HEARTHGATE_SIGNING_KEY_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Installed Hearthgate checks this signature before every update
+          # from the dashboard, so a release without it can't be installed.
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::The HEARTHGATE_SIGNING_KEY secret is missing; releases must be signed."
+            exit 1
+          fi
+          sudo apt-get install -y --no-install-recommends minisign
+          key="$RUNNER_TEMP/hearthgate.key"
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" >"$key"
+          printf '%s\n' "$SIGNING_KEY_PASSWORD" |
+            minisign -S -s "$key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig \
+              -t "hearthgate v$VERSION SHA256SUMS"
+          rm -f "$key"
+          minisign -V -P "$(grep -v '^untrusted' packaging/release-key.pub)" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig
+
       - name: Generate release notes
         if: steps.version.outputs.version != ''
         run: git cliff --unreleased --tag "${{ steps.version.outputs.tag }}" --strip all --output notes.md
@@ -81,7 +104,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz dist/*.deb dist/*.rpm dist/install.sh dist/SHA256SUMS \
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz dist/*.deb dist/*.rpm dist/install.sh dist/SHA256SUMS dist/SHA256SUMS.minisig \
             --target "$GITHUB_SHA" \
             --title "${{ steps.version.outputs.tag }}" \
             --notes-file notes.md
