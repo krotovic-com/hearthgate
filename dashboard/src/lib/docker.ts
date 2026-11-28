@@ -43,6 +43,25 @@ export function publishProblem(p: string): string | null {
   return ok ? null : `"${p}" is not [address:]host:container[/udp].`;
 }
 
+export function deviceProblem(d: string): string | null {
+  const parts = d.split(':');
+  const [host, container = host, perms = 'rwm'] = parts;
+  const devPath = (p: string) => /^\/dev\/\S+$/.test(p) && !p.split('/').includes('..');
+  const ok =
+    parts.length <= 3 &&
+    devPath(host!) &&
+    container!.startsWith('/') &&
+    !container!.includes('..') &&
+    /^[rwm]{1,3}$/.test(perms!) &&
+    new Set(perms).size === perms!.length;
+  return ok ? null : `"${d}" is not /dev/host[:/dev/container[:rwm]].`;
+}
+
+export function groupProblem(g: string): string | null {
+  const ok = /^\d+$/.test(g) ? Number(g) <= 0xffffffff : /^[a-z_][a-z0-9_-]{0,31}$/.test(g);
+  return ok ? null : `"${g}" is not a group name or number.`;
+}
+
 /** Splits a command like a shell would, for simple quoting. */
 export function splitCommand(text: string): string[] {
   const out: string[] = [];

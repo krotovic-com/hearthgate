@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEnv, publishProblem, shortImage, showCommand, splitCommand, volumeProblem } from './docker';
+import { deviceProblem, groupProblem, parseEnv, publishProblem, shortImage, showCommand, splitCommand, volumeProblem } from './docker';
 
 describe('docker form helpers', () => {
   it('parses env lines', () => {
@@ -14,6 +14,18 @@ describe('docker form helpers', () => {
     expect(publishProblem('53:53/udp')).toBeNull();
     expect(publishProblem('80')).not.toBeNull();
     expect(publishProblem('0:80')).not.toBeNull();
+  });
+  it('checks devices and groups like the server', () => {
+    expect(deviceProblem('/dev/dri')).toBeNull();
+    expect(deviceProblem('/dev/ttyUSB0:/dev/zigbee:rw')).toBeNull();
+    expect(deviceProblem('/etc/shadow')).not.toBeNull();
+    expect(deviceProblem('/dev/../etc')).not.toBeNull();
+    expect(deviceProblem('/dev/dri:/dev/dri:rx')).not.toBeNull();
+    expect(deviceProblem('/dev/dri:/dev/dri:rr')).not.toBeNull();
+    expect(groupProblem('render')).toBeNull();
+    expect(groupProblem('993')).toBeNull();
+    expect(groupProblem('Render')).not.toBeNull();
+    expect(groupProblem('9x')).not.toBeNull();
   });
   it('splits and shows commands', () => {
     expect(splitCommand(`sh -c "echo 'hi there'"`)).toEqual(['sh', '-c', "echo 'hi there'"]);

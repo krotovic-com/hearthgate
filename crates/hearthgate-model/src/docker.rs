@@ -30,6 +30,14 @@ pub struct Container {
     /// needed: routes reach the container over the `hearthgate` network.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub publish: Vec<String>,
+    /// Host devices to pass through, `/dev/host[:/dev/container[:rwm]]`,
+    /// such as `/dev/dri` for an Intel or AMD GPU.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<String>,
+    /// Extra groups for the container's process, by name or number, such as
+    /// `render` or `993`, so it may open devices that group owns.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<String>,
     #[serde(default, skip_serializing_if = "Restart::is_default")]
     pub restart: Restart,
 }
@@ -212,4 +220,64 @@ mod tests {
             is_env_name("TZ") && is_env_name("_A1") && !is_env_name("1A") && !is_env_name("A-B")
         );
     }
+}
+
+/// A parsed `devices` entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Device {
+    /// A path under `/dev` on the host.
+    pub host: String,
+    /// Where it appears in the container; the host path if not given.
+    pub container: String,
+    /// Some of `r`, `w` and `m`; `rwm` if not given.
+    pub permissions: String,
+}
+
+impl Device {
+    /// Parses `/dev/host[:/dev/container[:rwm]]`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let parts: Vec<&str> = text.split(':').collect();
+        let (host, container, permissions) = match parts.as_slice() {
+            [h] => (*h, *h, "rwm"),
+            [h, c] => (*h, *c, "rwm"),
+            [h, c, p] => (*h, *c, *p),
+            _ => return None,
+        };
+        let path_ok = |p: &str| {
+            p.starts_with("/dev/")
+                && p.len() > "/dev/".len()
+                && !p.split('/').any(|s| s == "..")
+                && !p.contains(char::is_whitespace)
+        };
+        let perms_ok = !permissions.is_empty()
+            && permissions.len() <= 3
+            && permissions.chars().all(|c| "rwm".contains(c))
+            && permissions
+                .chars()
+                .enumerate()
+                .all(|(i, c)| !permissions[..i].contains(c));
+        if !path_ok(host) || !container.starts_with('/') || container.contains("..") || !perms_ok {
+            return None;
+        }
+        Some(Self {
+            host: host.to_owned(),
+            container: container.to_owned(),
+            permissions: permissions.to_owned(),
+        })
+    }
+}
+
+/// Whether `text` is a group name such as `render`, or a group number.
+#[must_use]
+pub fn is_valid_group(text: &str) -> bool {
+    if !text.is_empty() && text.chars().all(|c| c.is_ascii_digit()) {
+        return text.parse::<u32>().is_ok();
+    }
+    let mut chars = text.chars();
+    text.len() <= 32
+        && chars
+            .next()
+            .is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "_-".contains(c))
 }

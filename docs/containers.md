@@ -11,6 +11,8 @@ image = "traefik/whoami:v1.10"
 env = { TZ = "Europe/Prague" }
 volumes = ["/srv/whoami:/data", "whoami-cache:/cache:ro"]
 # publish = ["127.0.0.1:8081:80"]  # host ports; rarely needed
+# devices = ["/dev/dri"]           # host devices, /dev/host[:/dev/container[:rwm]]
+# groups = ["993"]                 # extra groups, by number or name
 # restart = "unless-stopped"       # or "always", "on-failure", "no"
 
 [[stacks]]
@@ -32,6 +34,7 @@ volumes:
 
 Containers and the containers of stacks join a Docker network called `hearthgate`. Hearthgate reaches them there, so to publish one, add a `docker` service with `network = "hearthgate"` and a route, with no host ports published. The dashboard's Add container form can add that service for you. Stack containers are named `STACK-SERVICE-1`, such as `notes-app-1`.
 
+- `devices` passes host devices into the container, and `groups` adds groups to its process so it can open them. For hardware transcoding in Plex or Jellyfin with an Intel or AMD GPU, use `devices = ["/dev/dri"]` and add the render group by number (`getent group render` on the server prints it), since a name only works if the image's own `/etc/group` has it. Only paths under `/dev` are accepted.
 - A changed container is recreated; one removed from the state is removed (its volumes stay). A container that exits on its own is left to its restart policy.
 - Stacks run with the `docker compose` command (install the Compose plugin), from files Hearthgate keeps in `/var/lib/hearthgate/stacks/NAME`. Removing a stack runs `docker compose down`, which keeps named volumes.
 - Hearthgate never touches containers it didn't create. If a container with the same name already exists, it reports a problem instead.
