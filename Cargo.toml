@@ -26,6 +26,7 @@ hearthgate-vpn = { path = "crates/hearthgate-vpn" }
 hearthgate-docker = { path = "crates/hearthgate-docker" }
 hearthgate-notify = { path = "crates/hearthgate-notify" }
 hearthgate-ai = { path = "crates/hearthgate-ai" }
+hearthgate-update = { path = "crates/hearthgate-update" }
 
 anyhow = "1"
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }

@@ -16,6 +16,7 @@ mod firewall;
 mod hostname;
 mod notify;
 mod types;
+mod updates;
 mod validate;
 mod vpn;
 
@@ -25,6 +26,7 @@ pub use firewall::*;
 pub use hostname::{host_matches, is_valid_hostname, normalize_host};
 pub use notify::*;
 pub use types::*;
+pub use updates::*;
 pub use validate::{ValidationError, ValidationErrors, is_valid_name};
 pub use vpn::*;
 

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Ai, Container, Dns, Firewall, Notifications, Router, Stack, Vpn};
+use crate::{Ai, Container, Dns, Firewall, Notifications, Router, Stack, Updates, Vpn};
 
 /// The complete desired state: everything a user configures.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +51,9 @@ pub struct DesiredState {
     /// The optional AI assistant. Off unless turned on here.
     #[serde(default, skip_serializing_if = "Ai::is_default")]
     pub ai: Ai,
+    /// Updates of Hearthgate itself.
+    #[serde(default, skip_serializing_if = "Updates::is_default")]
+    pub updates: Updates,
 }
 
 /// Settings for automatic certificates (ACME).

@@ -98,6 +98,9 @@ impl DesiredState {
         self.validate_docker(&mut c);
         self.validate_notifications(&mut c);
         self.validate_ai(&mut c);
+        if self.updates.window_minutes().is_none() {
+            c.push("updates.window", "must be two times such as 03:00-05:00");
+        }
         if c.0.is_empty() {
             Ok(())
         } else {
