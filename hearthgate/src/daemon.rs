@@ -220,6 +220,9 @@ async fn serve(bootstrap: Bootstrap, logs: Arc<hearthgate_api::LogBuffer>) -> Re
     let (vpn, dns_settings) = crate::vpn::VpnCtl::new(Arc::clone(&vpn_runtime));
     tokio::spawn(hearthgate_vpn::dns::run(dns_settings, stop.clone()));
     let mut firewall = FirewallCtl::new(Arc::clone(&perimeter), Arc::clone(&store), access.clone());
+    firewall.docker = docker_manager
+        .enabled()
+        .then(|| Arc::clone(&docker_manager));
     firewall.recover().await;
     let mut daemon = Daemon {
         firewall,

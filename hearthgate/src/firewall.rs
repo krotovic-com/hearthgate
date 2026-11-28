@@ -41,6 +41,8 @@ pub struct FirewallCtl {
     pub problem: Option<String>,
     /// What VPN peers may reach, set by the VPN before each reconcile.
     pub vpn: Option<VpnPolicy>,
+    /// Managed Docker, for the subnet of its network.
+    pub docker: Option<Arc<hearthgate_docker::Manager>>,
 }
 
 impl FirewallCtl {
@@ -59,6 +61,7 @@ impl FirewallCtl {
             checked_at: Instant::now(),
             problem: None,
             vpn: None,
+            docker: None,
         }
     }
 
@@ -300,7 +303,20 @@ impl FirewallCtl {
             lan,
             trusted_interfaces: Vec::new(),
             vpn: self.vpn.clone(),
+            containers: self.containers_subnet(),
         }
+    }
+
+    /// The managed containers' network, once Docker has created it. Read
+    /// on every check, so the guard follows the network when it is created
+    /// or recreated.
+    fn containers_subnet(&self) -> Option<ipnet::Ipv4Net> {
+        self.docker
+            .as_ref()?
+            .status()
+            .subnet?
+            .parse::<ipnet::Ipv4Net>()
+            .ok()
     }
 }
 

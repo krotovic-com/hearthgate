@@ -18,6 +18,12 @@
 //! and a `postrouting` chain masquerades peers' traffic to the LAN. That
 //! part is installed even when the firewall itself is off, since per-peer
 //! access depends on it.
+//!
+//! The `forward` chain also guards the managed containers' network, whose
+//! containers Docker leaves reachable to routed traffic so that VPN peers
+//! get to them: new connections from anywhere else are dropped, except to
+//! ports Docker publishes. That part is installed whenever the network
+//! exists, firewall or not, since Docker itself no longer guards it.
 
 use std::fmt::Write as _;
 use std::net::{IpAddr, Ipv4Addr};
@@ -54,13 +60,15 @@ pub struct Inputs {
     pub trusted_interfaces: Vec<String>,
     /// The VPN, when it is on.
     pub vpn: Option<VpnPolicy>,
+    /// Subnet of the managed containers' Docker network, when it exists.
+    pub containers: Option<Ipv4Net>,
 }
 
 impl Inputs {
     /// Whether anything needs the table.
     #[must_use]
     pub fn needs_table(&self) -> bool {
-        self.firewall.enabled || self.vpn.is_some()
+        self.firewall.enabled || self.vpn.is_some() || self.containers.is_some()
     }
 }
 
@@ -186,8 +194,9 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
     }
 
     if !fw.enabled {
-        // The VPN alone: nothing else is filtered.
-        vpn_only(&mut out, inputs);
+        // The VPN and the containers' network alone: nothing else is
+        // filtered.
+        unfiltered(&mut out, inputs);
         return out;
     }
 
@@ -311,6 +320,9 @@ pub fn render(inputs: &Inputs, dynamic: &Dynamic) -> String {
     if let Some(vpn) = &inputs.vpn {
         vpn_forward(&mut out, vpn);
     }
+    if let Some(net) = inputs.containers {
+        containers_forward(&mut out, net);
+    }
     if !fw.allow_docker_ports {
         for iface in &inputs.trusted_interfaces {
             let _ = writeln!(out, "    iifname {} accept", quote(iface));
@@ -417,23 +429,48 @@ fn vpn_nat(out: &mut String, vpn: &VpnPolicy) {
     );
 }
 
-/// The table with only the VPN's rules, for when the firewall is off.
-fn vpn_only(out: &mut String, inputs: &Inputs) {
-    let Some(vpn) = &inputs.vpn else {
-        out.push_str("}\n");
-        return;
-    };
-    out.push_str("  chain input {\n    type filter hook input priority filter; policy accept;\n");
-    out.push_str("    ct state established,related accept\n");
-    vpn_input(out, vpn, &inputs.open);
-    out.push_str("  }\n");
-    out.push_str(
-        "  chain forward {\n    type filter hook forward priority filter; policy accept;\n",
+/// Keeps the managed containers' network to itself, VPN peers (already
+/// accepted or dropped by [`vpn_forward`]) and published ports: Docker
+/// does not drop packets routed to it from other interfaces, so a LAN
+/// host with a route through this machine, or a container on another
+/// network, could otherwise reach every port.
+fn containers_forward(out: &mut String, net: Ipv4Net) {
+    let net = net.trunc();
+    drop_rule(
+        out,
+        &format!("ip daddr {net} ip saddr != {net} ct state new ct status & dnat == 0"),
+        Family::V4,
+        Reason::Policy,
     );
-    out.push_str("    ct state established,related accept\n");
-    vpn_forward(out, vpn);
-    out.push_str("  }\n");
-    vpn_nat(out, vpn);
+}
+
+/// The table without the firewall: the VPN's rules and the containers'
+/// network guard.
+fn unfiltered(out: &mut String, inputs: &Inputs) {
+    if let Some(vpn) = &inputs.vpn {
+        out.push_str(
+            "  chain input {\n    type filter hook input priority filter; policy accept;\n",
+        );
+        out.push_str("    ct state established,related accept\n");
+        vpn_input(out, vpn, &inputs.open);
+        out.push_str("  }\n");
+    }
+    if inputs.vpn.is_some() || inputs.containers.is_some() {
+        out.push_str(
+            "  chain forward {\n    type filter hook forward priority filter; policy accept;\n",
+        );
+        out.push_str("    ct state established,related accept\n");
+        if let Some(vpn) = &inputs.vpn {
+            vpn_forward(out, vpn);
+        }
+        if let Some(net) = inputs.containers {
+            containers_forward(out, net);
+        }
+        out.push_str("  }\n");
+    }
+    if let Some(vpn) = &inputs.vpn {
+        vpn_nat(out, vpn);
+    }
     out.push_str("}\n");
 }
 
@@ -640,4 +677,61 @@ fn quote(name: &str) -> String {
         .take(15)
         .collect();
     format!("\"{clean}\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const GUARD: &str =
+        "ip daddr 172.18.0.0/16 ip saddr != 172.18.0.0/16 ct state new ct status & dnat == 0";
+
+    #[test]
+    fn guards_the_containers_network_with_the_firewall_off() {
+        let inputs = Inputs {
+            containers: Some("172.18.0.0/16".parse().unwrap()),
+            ..Inputs::default()
+        };
+        assert!(inputs.needs_table());
+        let script = render(&inputs, &Dynamic::default());
+        assert!(script.contains("chain forward"), "{script}");
+        assert!(script.contains(GUARD), "{script}");
+        // Nothing else is filtered.
+        assert!(!script.contains("chain input"), "{script}");
+        assert!(!script.contains("chain postrouting"), "{script}");
+    }
+
+    #[test]
+    fn guard_comes_after_the_vpn_peers() {
+        for enabled in [false, true] {
+            let inputs = Inputs {
+                firewall: Firewall {
+                    enabled,
+                    ..Firewall::default()
+                },
+                vpn: Some(VpnPolicy {
+                    interface: "hearthgate".into(),
+                    subnet: "10.88.0.0/24".parse().unwrap(),
+                    server: Ipv4Addr::new(10, 88, 0, 1),
+                    dns: true,
+                    full: vec![Ipv4Addr::new(10, 88, 0, 2)],
+                    allowed: Vec::new(),
+                }),
+                containers: Some("172.18.0.0/16".parse().unwrap()),
+                ..Inputs::default()
+            };
+            let script = render(&inputs, &Dynamic::default());
+            let forward = &script[script.find("chain forward").unwrap()..];
+            let peers = forward
+                .find("iifname \"hearthgate\" ip saddr @vpn_full accept")
+                .unwrap();
+            let guard = forward.find(GUARD).unwrap();
+            assert!(peers < guard, "{script}");
+        }
+    }
+
+    #[test]
+    fn no_table_without_anything_to_filter() {
+        assert!(!Inputs::default().needs_table());
+    }
 }
