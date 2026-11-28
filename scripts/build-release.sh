@@ -42,7 +42,9 @@ for target in "${targets[@]}"; do
   mkdir -p "$stage"
   cp "target/$target/release/hearthgate" "$stage/"
   cp LICENSE README.md "$stage/"
-  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate.sysusers packaging/sysctl/60-hearthgate.conf "$stage/"
+  cp packaging/systemd/hearthgate.service packaging/systemd/hearthgate-upgrade.service \
+    packaging/systemd/hearthgate-upgrade.path packaging/systemd/hearthgate.sysusers \
+    packaging/sysctl/60-hearthgate.conf "$stage/"
   mkdir -p "$stage/examples"
   cp packaging/hearthgate.toml packaging/examples/state.toml "$stage/examples/"
   tar -C dist -czf "dist/$name.tar.gz" "$name"
@@ -59,7 +61,9 @@ for target in "${targets[@]}"; do
     rm -rf target/package
     mkdir -p target/package
     cp "target/$target/release/hearthgate" target/package/
-    sed 's#/usr/local/bin/hearthgate#/usr/bin/hearthgate#' packaging/systemd/hearthgate.service >target/package/hearthgate.service
+    for unit in hearthgate.service hearthgate-upgrade.service; do
+      sed 's#/usr/local/bin/hearthgate#/usr/bin/hearthgate#' "packaging/systemd/$unit" >"target/package/$unit"
+    done
     for format in deb rpm; do
       VERSION="$version" ARCH="$arch" \
         nfpm package --config packaging/nfpm/nfpm.yaml --packager "$format" --target dist/

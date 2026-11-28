@@ -79,6 +79,7 @@ async fn start(options: Options) -> Api {
         )),
         docker: Arc::default(),
         ai: Arc::new(hearthgate_api::ai::Assistant::new(dir.path().join("data"))),
+        updates: test_updater(dir.path()),
     };
     let listener = TcpListener::bind(options.bind).await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -824,6 +825,7 @@ async fn dashboard_changes_admin_access_without_a_restart() {
         vpn: Arc::default(),
         docker: Arc::default(),
         ai: Arc::new(hearthgate_api::ai::Assistant::new(dir.path().join("data"))),
+        updates: test_updater(dir.path()),
     };
     let first = free_port();
     access
@@ -1459,4 +1461,70 @@ async fn ai_key_is_stored_privately() {
     .await;
     assert!(!path.exists());
     api.stop.cancel();
+}
+
+fn test_updater(dir: &std::path::Path) -> Arc<hearthgate_update::Updater> {
+    Arc::new(hearthgate_update::Updater::new(hearthgate_update::Config {
+        layout: hearthgate_update::state::Layout {
+            data_dir: dir.join("data"),
+            helper_dir: dir.join("helper"),
+        },
+        current: "0.0.0-dev".into(),
+        method: hearthgate_update::method::Method::Manual,
+        helper: false,
+        arch: None,
+        fetch: Arc::new(hearthgate_update::fetch::HttpFetch),
+        keys: Vec::new(),
+        settings: hearthgate_model::Updates::default(),
+    }))
+}
+
+#[tokio::test]
+async fn updates_endpoints_answer() {
+    let api = start(LOCAL).await;
+    let t = Some(TOKEN);
+    let (status, body) = call(api.port, "GET", "/api/v1/updates", t, None).await;
+    assert_eq!(status, 200, "{body}");
+    let body = json_of(&body);
+    assert_eq!(body["current"], "0.0.0-dev");
+    assert_eq!(body["can_install"], false);
+    assert!(
+        body["cannot_install"]
+            .as_str()
+            .unwrap()
+            .contains("development build")
+    );
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/updates/install",
+        t,
+        Some(json!({ "version": "9.9.9" })),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    let (status, _) = call(
+        api.port,
+        "POST",
+        "/api/v1/updates/skip",
+        t,
+        Some(json!({ "version": "nope" })),
+    )
+    .await;
+    assert_eq!(status, 422);
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/updates/skip",
+        t,
+        Some(json!({ "version": "9.9.9" })),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(json_of(&body)["skipped"], json!(["9.9.9"]));
+    let (status, body) = call(api.port, "GET", "/api/v1/updates/history", t, None).await;
+    assert_eq!(status, 200);
+    assert_eq!(json_of(&body), json!([]));
+    let (status, _) = call(api.port, "GET", "/api/v1/updates", None, None).await;
+    assert_eq!(status, 401);
 }

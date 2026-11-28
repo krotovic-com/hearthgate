@@ -1,0 +1,21 @@
+[Unit]
+Description=Install or roll back a Hearthgate update
+Documentation=https://github.com/krotovic-com/hearthgate/blob/main/docs/updates.md
+# Never runs by itself: hearthgate-upgrade.path starts it.
+RefuseManualStart=false
+
+[Service]
+Type=oneshot
+# Root, because it replaces the binary and restarts the gateway. It trusts
+# nothing the gateway wrote: it copies the download into its own directory
+# and checks the release signature again before changing anything.
+ExecStart=/usr/local/bin/hearthgate --config /etc/hearthgate/hearthgate.toml upgrade apply
+# Downloads happen in the gateway; the helper needs no network.
+PrivateNetwork=true
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+StateDirectory=hearthgate-upgrade
+StateDirectoryMode=0755
+# A package install plus a two-minute health check, with room to roll back.
+TimeoutStartSec=15min

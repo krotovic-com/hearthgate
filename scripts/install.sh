@@ -5,12 +5,16 @@
 #
 # Uses the .deb on Debian and Ubuntu, the .rpm on Fedora, RHEL and openSUSE,
 # and the static archive elsewhere. Every download is checked against the
-# release's SHA256SUMS. Environment:
+# release's SHA256SUMS, and SHA256SUMS is checked against the release
+# signing key when minisign is installed. Environment:
 #   HEARTHGATE_VERSION   a version such as 1.0.0 (default: the latest)
 #   HEARTHGATE_NO_START  set to 1 to install without starting the service
 set -eu
 
 repo="krotovic-com/hearthgate"
+# The release signing key. The same key is built into Hearthgate, which
+# checks it before every update from the dashboard.
+pubkey="RWQDbPNZZtyDzLtuWAw4DNX7OGSMq0cMIjTU24h2jCWHE5yliB4enY2M"
 
 say() { printf '%s\n' "$*"; }
 fail() {
@@ -46,6 +50,14 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 fetch "$base/SHA256SUMS" "$tmp/SHA256SUMS" || fail "cannot download $base/SHA256SUMS"
+if command -v minisign >/dev/null 2>&1; then
+  fetch "$base/SHA256SUMS.minisig" "$tmp/SHA256SUMS.minisig" ||
+    fail "cannot download $base/SHA256SUMS.minisig"
+  minisign -Vm "$tmp/SHA256SUMS" -P "$pubkey" -q ||
+    fail "SHA256SUMS is not signed by the Hearthgate release key; not installing."
+else
+  say "minisign is not installed, so only checksums are checked (install minisign to check the signature too)."
+fi
 
 if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
   kind=deb pattern="_${deb}\.deb$"
@@ -80,11 +92,15 @@ case "$kind" in
     install -D -m 0644 "$dir/hearthgate.sysusers" /usr/lib/sysusers.d/hearthgate.conf
     systemd-sysusers hearthgate.conf
     install -m 0644 "$dir/hearthgate.service" /etc/systemd/system/hearthgate.service
+    if [ -e "$dir/hearthgate-upgrade.service" ]; then
+      install -m 0644 "$dir/hearthgate-upgrade.service" "$dir/hearthgate-upgrade.path" /etc/systemd/system/
+    fi
     install -d -m 0755 /etc/hearthgate
     [ -e /etc/hearthgate/hearthgate.toml ] ||
       install -m 0644 "$dir/examples/hearthgate.toml" /etc/hearthgate/hearthgate.toml
     install -D -m 0644 "$dir/60-hearthgate.conf" /usr/share/hearthgate/60-hearthgate.conf
     systemctl daemon-reload
+    systemctl enable --now hearthgate-upgrade.path >/dev/null 2>&1 || true
     ;;
 esac
 

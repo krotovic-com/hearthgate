@@ -19,6 +19,7 @@ hearthgate-notify.workspace = true
 hearthgate-model = { workspace = true, features = ["openapi"] }
 hearthgate-proxy.workspace = true
 hearthgate-store.workspace = true
+hearthgate-update = { workspace = true, features = ["openapi"] }
 argon2.workspace = true
 axum.workspace = true
 futures-util.workspace = true

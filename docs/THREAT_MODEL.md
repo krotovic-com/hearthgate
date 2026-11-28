@@ -91,13 +91,17 @@ The assistant is off by default, and while it is off no code path connects to a 
 
 The model's answers are treated as untrusted input. They can't run anything or change the configuration: a suggested fix is only a patch that is validated like any edit, loaded into your draft, and applied only when you review and apply it. A model that was tricked by text in a log line can at worst suggest a bad change, which you see as a diff. The API key is kept out of the state, exports and API responses, in a file only Hearthgate can read.
 
+## Updates
+
+The gateway checks GitHub for releases and downloads them, but can't install anything: it can only write a request. A root helper with no network carries it out after copying the files into its own directory, refusing symbolic links, and checking that `SHA256SUMS` carries a valid signature from the release key compiled into the binary, for exactly the requested version, and that the file matches it. It never installs an older release except the one it kept for rollback. So someone who takes over the gateway can at most install a genuine, newer Hearthgate. The signing key lives offline and in a GitHub Actions secret used only by the release job; a stolen key could sign a malicious release, which is why the trusted comment names the version and automatic installs are off by default. If the new version doesn't report healthy within two minutes, the previous one comes back.
+
 ## The router
 
 UPnP and NAT-PMP are off by default. When on, Hearthgate only asks the router to forward the ports of public interfaces and WireGuard, removes those mappings when they leave the state or on shutdown, and never forwards the dashboard. Any device on your LAN can ask a UPnP router for the same, so if you don't need it, keep it off on the router too.
 
 ## The host
 
-Hearthgate runs as the unprivileged `hearthgate` user with three capabilities (bind low ports, configure the network, raw sockets for the firewall), and a systemd sandbox: read-only system directories, no access to home directories, no new privileges, a restricted system call set, no devices except `/dev/net/tun`, and memory that can't be both writable and executable. Its data directory is readable only by that user. Release binaries are static, built from a locked dependency graph in GitHub Actions, and published with SHA-256 checksums.
+Hearthgate runs as the unprivileged `hearthgate` user with three capabilities (bind low ports, configure the network, raw sockets for the firewall), and a systemd sandbox: read-only system directories, no access to home directories, no new privileges, a restricted system call set, no devices except `/dev/net/tun`, and memory that can't be both writable and executable. Its data directory is readable only by that user. Release binaries are static, built from a locked dependency graph in GitHub Actions, and published with SHA-256 checksums signed with the release key.
 
 ## Backups
 

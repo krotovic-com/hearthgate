@@ -13,6 +13,9 @@ if ! getent passwd hearthgate >/dev/null 2>&1 && command -v useradd >/dev/null 2
 fi
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload || true
+  # Lets the dashboard install updates (they still need your click unless
+  # you turn on automatic installs).
+  systemctl enable --now hearthgate-upgrade.path >/dev/null 2>&1 || true
   if systemctl is-active --quiet hearthgate; then
     systemctl restart hearthgate || true
   fi

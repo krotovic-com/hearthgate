@@ -21,4 +21,4 @@ sudo systemctl start hearthgate
 
 If the data directory already has a state, add `--force`: what was there is moved to `before-restore-TIME` inside it, not deleted. Managed containers and stacks are started again from the restored state; their volumes are not part of the backup, so back those up with your usual tools.
 
-**Upgrading.** Replace the binary and restart the service. The state database is upgraded on start, from any earlier release in one step, and a backup made by an older release restores on a newer one. Going back to an older release after an upgrade isn't supported: restore a backup made before the upgrade instead.
+**Upgrading.** Install updates from the dashboard, under Settings, Updates (see [Updates](updates.md)), which backs up and rolls back by itself. By hand: replace the binary and restart the service. The state database is upgraded on start, from any earlier release in one step, and a backup made by an older release restores on a newer one. Going back to an older release after an upgrade isn't supported: restore a backup made before the upgrade instead.

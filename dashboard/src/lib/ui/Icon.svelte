@@ -8,7 +8,8 @@
   }
   export type IconName =
     | 'overview' | 'globe' | 'server' | 'route' | 'vpn' | 'firewall' | 'peers' | 'settings'
-    | 'plus' | 'chevron' | 'lock' | 'more' | 'arrow' | 'container' | 'terminal' | 'ai';
+    | 'plus' | 'chevron' | 'lock' | 'more' | 'arrow' | 'container' | 'terminal' | 'ai'
+    | 'arrow-up' | 'refresh' | 'undo' | 'check';
 </script>
 
 <script lang="ts">

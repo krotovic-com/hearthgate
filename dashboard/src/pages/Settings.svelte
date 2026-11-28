@@ -7,6 +7,7 @@
   import Notifications from './settings/Notifications.svelte';
   import Account from './settings/Account.svelte';
   import Ai from './settings/Ai.svelte';
+  import Updates from './settings/Updates.svelte';
   import { onMount } from 'svelte';
   import { param } from '../lib/router.svelte';
 
@@ -17,6 +18,7 @@
     { id: 'router', label: 'Router' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'ai', label: 'AI assistant' },
+    { id: 'updates', label: 'Updates' },
     { id: 'account', label: 'Account' },
   ];
   let active = $state('general');
@@ -58,6 +60,7 @@
     <Router />
     <Notifications />
     <Ai />
+    <Updates />
     <Account />
   </div>
 </div>

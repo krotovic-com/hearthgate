@@ -24,6 +24,7 @@
 
 # Operate
 
+- [Updates](updates.md)
 - [Backups and upgrades](backups.md)
 - [Operating it](operating.md)
 

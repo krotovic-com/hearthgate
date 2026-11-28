@@ -27,6 +27,9 @@ curl --cacert /var/lib/hearthgate/admin-tls/cert.pem \
 | `GET /api/v1/docker`, `GET /api/v1/docker/updates` | Managed containers and stacks, and image update checks |
 | `POST /api/v1/docker/containers/{name}/restart`, `…/update`, `POST /api/v1/docker/stacks/{name}/update` | Restart, or pull and recreate |
 | `GET /api/v1/docker/containers/{name}/logs`, `…/stats` | Output (with `tail` and `search`) and resource use |
+| `GET /api/v1/updates`, `POST /api/v1/updates/check` | Installed version, install method, a newer release and the current install; check GitHub now |
+| `POST /api/v1/updates/install`, `DELETE /api/v1/updates/scheduled` | Install a release now (`{"version": "1.3.0"}`) or in the window (`"when": "window"`), or cancel a scheduled one |
+| `POST /api/v1/updates/rollback`, `POST /api/v1/updates/skip`, `…/unskip`, `GET /api/v1/updates/history`, `GET /api/v1/updates/progress` | Roll back, skip a release, past jobs, and progress as Server-Sent Events |
 | `POST /api/v1/notifications/test` | Send a test message with the given notification settings |
 | `GET /api/v1/vpn` | VPN state, devices with their last handshake and traffic, and the internal DNS names |
 | `POST /api/v1/vpn/peer-config` | Keys and configuration for a new device. Nothing is stored: add the returned public key to the state |
