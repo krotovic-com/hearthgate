@@ -3,6 +3,8 @@
 //! Every request to a provider goes through [`hearthgate_ai::Client`],
 //! which refuses while AI is off, and every payload is redacted first.
 //! `POST /api/v1/ai/preview` shows the exact body without sending it.
+//! `POST /api/v1/ai/chat` is Ask AI: a conversation about the open screen
+//! whose proposed changes the user applies themselves.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -12,7 +14,10 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use hearthgate_ai::{Client, Finding, Outgoing, Redactor, Review, Scope, Severity};
+use hearthgate_ai::{
+    ChatContext, ChatReply, ChatTurn, Client, Finding, Outgoing, PatchOp, Redactor, Review, Scope,
+    Severity,
+};
 use hearthgate_model::{Ai, AiProvider, DesiredState, ServiceKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -337,6 +342,183 @@ pub(crate) async fn fix_draft(
         state: next,
         summary: fix.summary,
     }))
+}
+
+/// One Ask AI request: the whole conversation so far and what is on screen.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ChatRequest {
+    /// Oldest first. The last turn is the user's question.
+    pub messages: Vec<ChatTurn>,
+    #[serde(default)]
+    pub context: ChatContext,
+    /// The dashboard's draft, when it has unapplied changes. Proposals are
+    /// made and checked against it instead of the current configuration.
+    #[serde(default)]
+    pub draft: Option<DesiredState>,
+}
+
+/// A proposal's changes and the configuration to apply them to.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ProposalDraftRequest {
+    /// The configuration to change, usually the dashboard's draft.
+    pub state: DesiredState,
+    pub changes: Vec<PatchOp>,
+}
+
+#[utoipa::path(post, path = "/api/v1/ai/chat", tag = "ai",
+    description = "Ask AI: answers the last message of the conversation, knowing the open \
+                   screen, and may propose changes. Changes nothing: proposals are applied \
+                   by the user, through the draft. Only works while AI is on, and everything \
+                   sent is redacted first.",
+    request_body = ChatRequest,
+    responses((status = 200, body = ChatReply), (status = 400, body = crate::routes::Problem),
+              (status = 409, body = crate::routes::Problem),
+              (status = 502, body = crate::routes::Problem)))]
+pub(crate) async fn chat(
+    State(state): State<ApiState>,
+    Json(req): Json<ChatRequest>,
+) -> ApiResult<ChatReply> {
+    if !req
+        .messages
+        .last()
+        .is_some_and(|m| m.role == hearthgate_ai::ChatRole::User && !m.text.trim().is_empty())
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "the conversation must end with a question",
+        ));
+    }
+    let current = current_state(&state).await?;
+    let settings = current.ai.clone();
+    // Before anything else: no settings, no client, no connection.
+    let client = Client::new(&settings, state.ai.key(&settings)).map_err(|e| conflict(&e))?;
+    let base = req.draft.unwrap_or(current);
+    let mut redactor = Redactor::new(&settings.redact).map_err(|e| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            format!("a redaction pattern is invalid: {e}"),
+        )
+    })?;
+    let mut material = chat_material(&state, &base, &req.context).await?;
+    redactor.redact_json(&mut material);
+    let prompt =
+        hearthgate_ai::chat::prompt(&req.messages, &material, config_schema(), &mut redactor);
+    let answer = client.complete(&prompt).await.map_err(|e| conflict(&e))?;
+    let reply = hearthgate_ai::chat::parse(&answer, &redactor, &base).map_err(|e| conflict(&e))?;
+    Ok(Json(reply))
+}
+
+#[utoipa::path(post, path = "/api/v1/ai/chat/draft", tag = "ai",
+    description = "The given configuration with a proposal's changes applied, checked like \
+                   any change. Changes nothing: load it into the draft, then apply it.",
+    request_body = ProposalDraftRequest,
+    responses((status = 200, body = FixDraft), (status = 422, body = crate::routes::Problem)))]
+pub(crate) async fn proposal_draft(Json(req): Json<ProposalDraftRequest>) -> ApiResult<FixDraft> {
+    let fix = hearthgate_ai::Fix {
+        summary: String::new(),
+        changes: req.changes,
+    };
+    let next = hearthgate_ai::review::propose(&req.state, &fix).map_err(|why| {
+        ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("the change no longer applies to the configuration: {why}"),
+        )
+    })?;
+    Ok(Json(FixDraft {
+        state: next,
+        summary: String::new(),
+    }))
+}
+
+/// The JSON schema of the configuration, from the API document, so the
+/// model writes values that fit.
+fn config_schema() -> &'static Value {
+    static SCHEMA: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    SCHEMA.get_or_init(|| {
+        use utoipa::OpenApi as _;
+        let doc = crate::routes::ApiDoc::openapi();
+        let all = doc
+            .components
+            .and_then(|c| serde_json::to_value(c.schemas).ok())
+            .unwrap_or_default();
+        let mut wanted = vec!["DesiredState".to_owned()];
+        let mut out = serde_json::Map::new();
+        while let Some(name) = wanted.pop() {
+            if out.contains_key(&name) {
+                continue;
+            }
+            let Some(schema) = all.get(&name) else {
+                continue;
+            };
+            let mut refs = Vec::new();
+            collect_refs(schema, &mut refs);
+            wanted.extend(refs);
+            out.insert(name, schema.clone());
+        }
+        // The model never changes these.
+        out.remove("Ai");
+        out.remove("Notifications");
+        Value::Object(out)
+    })
+}
+
+fn collect_refs(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(r)) = map.get("$ref")
+                && let Some(name) = r.strip_prefix("#/components/schemas/")
+            {
+                out.push(name.to_owned());
+            }
+            map.values().for_each(|v| collect_refs(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| collect_refs(v, out)),
+        _ => {}
+    }
+}
+
+/// What Ask AI sees: the configuration, the gateway's state, the open
+/// screen, and more about the selected item or the screen's subject.
+async fn chat_material(
+    state: &ApiState,
+    base: &DesiredState,
+    context: &ChatContext,
+) -> Result<Value, ApiError> {
+    let status = crate::routes::status_snapshot(state).await?;
+    let mut m = json!({
+        "screen": context,
+        "configuration": config_for_model(base),
+        "status": status,
+        "certificates": crate::routes::cert_list(state).unwrap_or_default(),
+        "log": log_lines(state, None, 30),
+    });
+    let section = context.path.split('/').nth(1).unwrap_or_default();
+    if section == "firewall" {
+        m["firewall"] = json!(crate::firewall::info(State(state.clone())).await.0);
+        m["recent_drops"] = recent_drops(state, 50).await;
+    }
+    if matches!(section, "containers" | "services") && state.docker.enabled() {
+        m["docker"] = json!(state.docker.status());
+    }
+    if let Some(selected) = &context.selection
+        && base.services.iter().any(|s| &s.name == selected)
+    {
+        let extra = material(
+            state,
+            base,
+            &Scope::Service {
+                service: selected.clone(),
+            },
+        )
+        .await?;
+        for key in ["service", "routes", "container", "container_logs"] {
+            if let Some(v) = extra.get(key) {
+                m[key] = v.clone();
+            }
+        }
+        m["log"] = extra["log"].clone();
+    }
+    Ok(m)
 }
 
 /// Runs a review now and stores it.

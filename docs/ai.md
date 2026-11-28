@@ -1,6 +1,6 @@
 # AI assistant
 
-Hearthgate can ask an AI model to look over your setup: it reviews the whole configuration, checks the firewall rules, and explains why a service is failing. Every suggestion arrives as a change you review in your draft, so nothing is ever changed behind your back.
+Hearthgate can ask an AI model to look over your setup: it reviews the whole configuration, checks the firewall rules, and explains why a service is failing. **Ask AI**, a chat beside every screen of the dashboard, answers questions and walks you through a setup step by step. Every suggestion arrives as a change you accept or skip, so nothing is ever changed behind your back.
 
 The assistant is **off by default**. While it is off, Hearthgate never connects to an AI provider; a test checks this on every build.
 
@@ -62,6 +62,22 @@ The same value always gets the same placeholder within a review, and placeholder
 A finding can carry a fix. **Put fix in draft** applies it to the current configuration, checks it like any change, and loads it into your draft: review the diff, apply it, or discard it. Applied fixes are ordinary revisions, so History can roll them back. If your draft has unapplied changes, apply or discard them first.
 
 The last 20 reviews are kept in the data directory (`ai/reviews`).
+
+## Ask AI
+
+**Ask AI** in the sidebar (or <kbd>⌘J</kbd> on a Mac, <kbd>Ctrl</kbd>+<kbd>J</kbd> elsewhere) opens a chat panel beside the page. It pushes the page aside rather than covering it, so you can keep it open while you work, and it stays usable while a dialog is open.
+
+The assistant sees what you see: the screen, the item you selected (a service, a route, a settings section) and the fields of an open dialog (never password fields). Small notes in the chat, such as *You opened Routes*, show when that changes. The conversation stays as it is when you move between screens and after a reload, until you start a **New chat** or close the browser tab.
+
+Ask about anything on the screen, or let it guide you through a setup from start to finish, such as a new service: the container, the service, a firewall rule, the public interface and the route. For a setup it shows a plan with the steps done so far, and proposes one change at a time. Each proposal shows exactly what it changes:
+
+- **Apply** applies it as a new revision right away. **Undo** rolls it back while nothing else has been applied since; after that, use History.
+- **Open in form** puts it in your draft and opens the usual editor for it, so you can check or adjust it and apply it from the draft bar.
+- **Skip** leaves it out. The assistant knows what you applied and skipped when it suggests the next step.
+
+Proposals are checked against your configuration before you see them, and ones that don't fit are left out. **Apply** waits while your draft has other unapplied changes, so they never go in with it by surprise; **Open in form** adds to the draft instead.
+
+Each message sends the conversation so far, the screen's context, your draft if it has unapplied changes, the configuration and status, and what the screen is about (the firewall's recent drops on Firewall, Docker's state on Containers and Services, a selected service's logs). It is redacted like a review, and nothing is stored on the server.
 
 ## Weekly review
 

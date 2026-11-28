@@ -224,15 +224,15 @@ struct RawFinding {
 }
 
 #[derive(Deserialize)]
-struct RawFix {
+pub(crate) struct RawFix {
     #[serde(default)]
-    summary: String,
+    pub(crate) summary: String,
     #[serde(default)]
-    changes: Vec<RawChange>,
+    pub(crate) changes: Vec<RawChange>,
 }
 
 #[derive(Deserialize)]
-struct RawChange {
+pub(crate) struct RawChange {
     op: Op,
     path: String,
     #[serde(default)]
@@ -244,7 +244,7 @@ struct RawChange {
 
 /// The JSON object in `text`: models sometimes wrap it in a code fence or a
 /// sentence.
-fn json_object(text: &str) -> Option<&str> {
+pub(crate) fn json_object(text: &str) -> Option<&str> {
     let start = text.find('{')?;
     let end = text.rfind('}')?;
     (end > start).then(|| &text[start..=end])
@@ -274,7 +274,7 @@ pub fn parse(answer: &str, redactor: &Redactor) -> Result<(String, Vec<Finding>)
     Ok((redactor.unredact(&raw.summary), findings))
 }
 
-fn read_fix(fix: RawFix, redactor: &Redactor) -> Option<Fix> {
+pub(crate) fn read_fix(fix: RawFix, redactor: &Redactor) -> Option<Fix> {
     if fix.changes.is_empty() {
         return None;
     }

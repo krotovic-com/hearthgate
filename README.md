@@ -17,7 +17,7 @@
 
 Hearthgate is a secure-by-default gateway for home servers, written in Rust and run as a native Linux systemd service. It is the only way in from the internet. Only the services you explicitly publish get a public interface. Everything else stays private and is reachable over the built-in VPN.
 
-> **Status:** 1.1. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. Since 1.1 an optional AI assistant reviews the setup with Claude, OpenAI, Gemini or a local model, and suggests fixes you review as a diff. The [documentation](https://hearthgate.dev/docs/) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
+> **Status:** 1.2. Public interfaces with automatic certificates (wildcards through DNS-01), routes to programs on your network, existing Docker containers or containers and Compose stacks Hearthgate runs itself, load balancing and health checks, an nftables firewall with blocklists and rate limits, router port forwarding, a WireGuard VPN with internal DNS, notifications, backups, signed updates from the dashboard, and a web dashboard reachable only from your LAN or VPN, plus a CLI and an admin API. An optional AI assistant (Claude, OpenAI, Gemini or a local model) reviews the setup, troubleshoots services and, with Ask AI, guides you through setups from any screen. The [documentation](https://hearthgate.dev/docs/) covers all of it; the [roadmap](docs/ROADMAP.md) shows what comes next.
 
 ## What it does
 
@@ -32,12 +32,11 @@ Available now:
 - **Admin API and metrics.** A REST API with an OpenAPI document, reachable only from private networks, and Prometheus metrics.
 - **Firewall and blocklists.** An nftables firewall that closes every port no public interface opens, with your own rules, subscribed blocklists, country blocking, per-interface rate limits and automatic bans for clients that probe or fail to log in. Changes that would lock you out undo themselves after 60 seconds.
 - **Router port forwarding.** Optionally keeps your router's port forwards (UPnP or NAT-PMP) in line with your public interfaces, and warns about double NAT.
-- **Managed Docker.** Containers and Compose stacks that Hearthgate runs, updates on request and shows logs for, reachable by routes without publishing ports.
+- **Managed Docker.** Containers and Compose stacks that Hearthgate runs, updates on request and shows logs for, reachable by routes without publishing ports and kept out of your LAN. Host devices such as a GPU can be passed in for hardware transcoding.
 - **Built-in VPN.** WireGuard devices reach every internal service, published or not, with internal DNS at `name.home.internal`. Add a device by scanning a QR code, and limit a device to a few services if you like.
-
-Coming next:
-
-- **Optional AI assistant.** Bring your own provider (Claude, Gemini, OpenAI, Ollama and others) to review rules and troubleshoot services. Suggestions always wait for your approval, and logs are redacted before they leave the machine.
+- **Notifications and backups.** Get told about certificate, health, security, backup and update events by email, ntfy or a webhook (Slack, Mattermost, Discord or your own script). Everything Hearthgate can't rebuild is backed up daily.
+- **Updates.** Hearthgate checks for new releases daily, installs a signed release with one click (or by itself in a time window, if you allow it), and rolls back if the new version doesn't come up healthy.
+- **Optional AI assistant.** Bring your own provider (Claude, OpenAI, Gemini, or Ollama and other local models). It reviews the whole setup or the firewall rules, explains why a service is failing, and reviews weekly if you like. **Ask AI** is a chat beside every dashboard screen that sees what you are looking at and guides you through a setup step by step, from container to public route. Every change it suggests waits for you to apply it, and addresses, domains and secrets are redacted before anything leaves the machine. Off until you turn it on.
 
 ## Install
 

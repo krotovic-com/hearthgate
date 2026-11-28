@@ -20,6 +20,8 @@ They must match. To avoid the warning, give Hearthgate a certificate from your o
 
 **Publishing a service.** Add the service (a container or a program on your network), then a public interface with its domain and ports, then a route between them on the Routes page. Edits go into a draft: the bar at the bottom shows what changed, **Review and apply** shows the diff, and applying stores it as a new revision. The **History** page shows every revision's diff and rolls back to any of them.
 
+**Asking for help.** With the [AI assistant](ai.md) turned on, **Ask AI** in the sidebar (<kbd>⌘J</kbd> or <kbd>Ctrl</kbd>+<kbd>J</kbd>) opens a chat beside the page that sees the screen you are on and can walk you through publishing a service step by step. Its changes wait for you to apply them.
+
 **Accounts.** Under Settings, Account you can change the password (other sessions are logged out), turn on two-factor login with an authenticator app, and create API tokens for scripts. Ten failed logins in 15 minutes from one address, or for one username, block further attempts for a while. Sessions end after 12 hours without use and after 7 days at most.
 
 **Who can reach it.** Settings, Dashboard access shows the addresses and networks in effect and lets you choose your own (private ranges only). Changes apply at once; a change that would lock out the browser making it is refused. If you lock yourself out anyway, run `sudo -u hearthgate hearthgate admin-access --reset` and restart the service. Setting `admin.listen` or `admin.allow` in the bootstrap file fixes the values there instead, and the dashboard shows them read-only.

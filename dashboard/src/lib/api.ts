@@ -451,6 +451,51 @@ export interface AiReview {
   findings: AiFinding[];
 }
 
+export type ChatRole = 'user' | 'assistant' | 'context';
+
+export interface ChatTurn {
+  role: ChatRole;
+  text: string;
+}
+
+export interface ChatContext {
+  screen: string;
+  path: string;
+  selection?: string | null;
+  dialog?: { title: string; fields: { label: string; value: string }[] } | null;
+}
+
+export type ProposalKind =
+  | 'container'
+  | 'stack'
+  | 'service'
+  | 'interface'
+  | 'route'
+  | 'firewall'
+  | 'vpn'
+  | 'settings'
+  | 'other';
+
+export interface Proposal {
+  kind: ProposalKind;
+  title: string;
+  summary: string;
+  step: number;
+  changes: PatchOp[];
+}
+
+export interface Plan {
+  title: string;
+  steps: { title: string; detail: string; done: boolean }[];
+}
+
+export interface ChatReply {
+  reply: string;
+  proposals: Proposal[];
+  plan?: Plan | null;
+  suggestions: string[];
+}
+
 export interface AiPreview {
   url: string;
   body: unknown;
@@ -680,6 +725,10 @@ export const api = {
       'POST',
       `/api/v1/ai/reviews/${encodeURIComponent(review)}/findings/${finding}/draft`,
     ),
+  aiChat: (messages: ChatTurn[], context: ChatContext, draft?: DesiredState) =>
+    request<ChatReply>('POST', '/api/v1/ai/chat', { messages, context, draft: draft ?? null }),
+  aiProposalDraft: (state: DesiredState, changes: PatchOp[]) =>
+    request<{ state: DesiredState; summary: string }>('POST', '/api/v1/ai/chat/draft', { state, changes }),
   updates: () => request<UpdateInfo>('GET', '/api/v1/updates'),
   checkUpdates: () => request<UpdateInfo>('POST', '/api/v1/updates/check'),
   installUpdate: (version: string, when: 'now' | 'window') =>

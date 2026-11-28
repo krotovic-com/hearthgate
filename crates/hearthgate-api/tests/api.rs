@@ -1416,6 +1416,131 @@ async fn ai_review_is_off_by_default_redacted_and_fixes_roll_back() {
 }
 
 #[tokio::test]
+async fn ask_ai_chat_is_redacted_and_only_proposes() {
+    let api = start(LOCAL).await;
+    let t = Some(TOKEN);
+    let fake = FakeProvider::start(|body| {
+        let host = host_placeholder(body);
+        json!({
+            "reply": format!("{host} needs port 8081. Apply the change below."),
+            "proposals": [
+                { "kind": "service", "title": "Use port 8081", "summary": "s", "step": 1,
+                  "changes": [{ "op": "replace", "path": "/services/0/ports/http", "value_json": "8081" }] },
+                { "kind": "route", "title": "Broken", "summary": "", "step": 2,
+                  "changes": [{ "op": "replace", "path": "/routes/9", "value_json": "{}" }] }
+            ],
+            "plan": { "title": "Fix it", "steps": [
+                { "title": "Port", "detail": "Services", "done": false }
+            ] },
+            "suggestions": ["Why?"]
+        })
+    })
+    .await;
+    let ask = |text: &str| {
+        json!({
+            "messages": [
+                { "role": "user", "text": "Hi" },
+                { "role": "assistant", "text": "Hello" },
+                { "role": "context", "text": "You opened Services" },
+                { "role": "user", "text": text }
+            ],
+            "context": {
+                "screen": "Services", "path": "/services/photos", "selection": "photos",
+                "dialog": { "title": "Edit service", "fields": [{ "label": "Host", "value": "192.168.1.20" }] }
+            }
+        })
+    };
+    call(
+        api.port,
+        "PUT",
+        "/api/v1/state",
+        t,
+        Some(json!({ "state": ai_state(fake.port, false) })),
+    )
+    .await;
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/chat",
+        t,
+        Some(ask("Why is it down?")),
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(fake.connections(), 0, "AI is off: no connection at all");
+
+    call(
+        api.port,
+        "PUT",
+        "/api/v1/state",
+        t,
+        Some(json!({ "state": ai_state(fake.port, true) })),
+    )
+    .await;
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/chat",
+        t,
+        Some(json!({ "messages": [{ "role": "assistant", "text": "Hi" }] })),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/chat",
+        t,
+        Some(ask("Is photos.familyhome.net on 192.168.1.20 fine?")),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let (_, sent) = fake.requests.lock().unwrap()[0].clone();
+    for leak in ["192.168.1.20", "familyhome.net", "s3cr3t", "photos"] {
+        assert!(!sent.contains(leak), "{leak} was sent: {sent}");
+    }
+    assert!(sent.contains("[context] You opened Services"), "{sent}");
+    assert!(sent.contains("Edit service"), "{sent}");
+    let reply = json_of(&body);
+    assert!(
+        reply["reply"]
+            .as_str()
+            .unwrap()
+            .starts_with("192.168.1.20 needs port 8081")
+    );
+    assert_eq!(reply["proposals"].as_array().unwrap().len(), 1, "{body}");
+    assert_eq!(reply["plan"]["steps"][0]["title"], "Port");
+
+    // Nothing changed until the proposal is put in a draft and applied.
+    let (_, body) = call(api.port, "GET", "/api/v1/state", t, None).await;
+    let state = json_of(&body)["state"].clone();
+    assert_eq!(state["services"][0]["ports"]["http"], 8080);
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/chat/draft",
+        t,
+        Some(json!({ "state": state, "changes": reply["proposals"][0]["changes"] })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        json_of(&body)["state"]["services"][0]["ports"]["http"],
+        8081
+    );
+    let (status, _) = call(
+        api.port,
+        "POST",
+        "/api/v1/ai/chat/draft",
+        t,
+        Some(json!({ "state": state, "changes": [{ "op": "remove", "path": "/routes/5" }] })),
+    )
+    .await;
+    assert_eq!(status, 422);
+    api.stop.cancel();
+}
+
+#[tokio::test]
 async fn ai_key_is_stored_privately() {
     let api = start(LOCAL).await;
     let t = Some(TOKEN);

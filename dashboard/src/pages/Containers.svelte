@@ -14,6 +14,7 @@
   import { draft, edit, gw } from '../lib/gateway.svelte';
   import { shortImage } from '../lib/docker';
   import { plural } from '../lib/format';
+  import { navigate, param } from '../lib/router.svelte';
 
   let info = $state<DockerInfo | null>(null);
   let loadError = $state<string | null>(null);
@@ -95,6 +96,21 @@
   let logsName = $state('');
   let removing = $state<{ kind: 'container' | 'stack'; name: string } | null>(null);
   let removeOpen = $state(false);
+
+  // ?edit=<container> or ?edit-stack=<stack> opens its editor (from Ask AI).
+  $effect(() => {
+    const container = param('edit');
+    const stack = param('edit-stack');
+    if ((!container && !stack) || !gw.loaded) return;
+    if (container) {
+      editingContainer = draft.containers.find((c) => c.name === container) ?? null;
+      containerOpen = editingContainer !== null;
+    } else {
+      editingStack = draft.stacks.find((s) => s.name === stack) ?? null;
+      stackOpen = editingStack !== null;
+    }
+    navigate('/containers', true);
+  });
 
   function showLogs(name: string) {
     logsName = name;
