@@ -128,7 +128,10 @@ mod tests {
 
     #[test]
     fn ignores_anything_else() {
-        assert!(parse("").is_empty());
-        assert!(parse("Just some text\n- a list outside a section").is_empty());
+        assert_eq!(parse(""), Vec::<Note>::new());
+        assert_eq!(
+            parse("Just some text\n- a list outside a section"),
+            Vec::<Note>::new()
+        );
     }
 }
