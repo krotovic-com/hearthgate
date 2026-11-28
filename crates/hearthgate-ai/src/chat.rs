@@ -493,6 +493,6 @@ mod tests {
             r#"{"reply":"Hi","proposals":[],"plan":{"title":"","steps":[]},"suggestions":[]}"#;
         let out = parse(answer, &r, &DesiredState::default()).unwrap();
         assert!(out.plan.is_none());
-        assert!(out.proposals.is_empty());
+        assert_eq!(out.proposals.len(), 0);
     }
 }
