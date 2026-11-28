@@ -120,11 +120,14 @@ pub fn detect(root: &Path, exe: &Path) -> Method {
             Method::Deb
         }
         Some("/usr/bin/hearthgate")
-            if at("/usr/bin/rpm").exists() && (at("/var/lib/rpm").is_dir() || at("/usr/lib/sysimage/rpm").is_dir()) =>
+            if at("/usr/bin/rpm").exists()
+                && (at("/var/lib/rpm").is_dir() || at("/usr/lib/sysimage/rpm").is_dir()) =>
         {
             Method::Rpm
         }
-        Some("/usr/local/bin/hearthgate") if at("/etc/systemd/system/hearthgate.service").is_file() => {
+        Some("/usr/local/bin/hearthgate")
+            if at("/etc/systemd/system/hearthgate.service").is_file() =>
+        {
             Method::Tarball
         }
         _ => Method::Manual,
@@ -146,9 +149,13 @@ pub fn current_exe() -> PathBuf {
 /// can be installed from the dashboard.
 #[must_use]
 pub fn helper_installed(root: &Path) -> bool {
-    ["usr/lib/systemd/system", "lib/systemd/system", "etc/systemd/system"]
-        .iter()
-        .any(|d| root.join(d).join("hearthgate-upgrade.path").is_file())
+    [
+        "usr/lib/systemd/system",
+        "lib/systemd/system",
+        "etc/systemd/system",
+    ]
+    .iter()
+    .any(|d| root.join(d).join("hearthgate-upgrade.path").is_file())
 }
 
 #[cfg(test)]
@@ -173,8 +180,14 @@ mod tests {
         ];
         let x86 = Arch::from_name("x86_64").unwrap();
         let arm = Arch::from_name("aarch64").unwrap();
-        assert_eq!(pick_asset(names, Method::Deb, v("1.3.0"), x86), Some("hearthgate_1.3.0_amd64.deb"));
-        assert_eq!(pick_asset(names, Method::Rpm, v("1.3.0"), arm), Some("hearthgate-1.3.0-1.aarch64.rpm"));
+        assert_eq!(
+            pick_asset(names, Method::Deb, v("1.3.0"), x86),
+            Some("hearthgate_1.3.0_amd64.deb")
+        );
+        assert_eq!(
+            pick_asset(names, Method::Rpm, v("1.3.0"), arm),
+            Some("hearthgate-1.3.0-1.aarch64.rpm")
+        );
         assert_eq!(
             pick_asset(names, Method::Tarball, v("1.3.0"), x86),
             Some("hearthgate-v1.3.0-x86_64-unknown-linux-musl.tar.gz")
@@ -201,7 +214,10 @@ mod tests {
         assert_eq!(detect(r, exe), Method::Rpm);
         std::fs::create_dir_all(r.join("etc/systemd/system")).unwrap();
         std::fs::write(r.join("etc/systemd/system/hearthgate.service"), "").unwrap();
-        assert_eq!(detect(r, Path::new("/usr/local/bin/hearthgate")), Method::Tarball);
+        assert_eq!(
+            detect(r, Path::new("/usr/local/bin/hearthgate")),
+            Method::Tarball
+        );
         assert!(!helper_installed(r));
         std::fs::write(r.join("etc/systemd/system/hearthgate-upgrade.path"), "").unwrap();
         assert!(helper_installed(r));

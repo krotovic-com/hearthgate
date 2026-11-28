@@ -126,7 +126,8 @@ pub fn verify_sums(
         if !is_plain_name(name) {
             return Err(VerifyError::BadSums(format!("file name {name:?}")));
         }
-        let digest = parse_hex(hash).ok_or_else(|| VerifyError::BadSums(format!("checksum for {name}")))?;
+        let digest =
+            parse_hex(hash).ok_or_else(|| VerifyError::BadSums(format!("checksum for {name}")))?;
         entries.insert(name.to_owned(), digest);
     }
     if entries.is_empty() {
@@ -183,9 +184,15 @@ pub(crate) mod testkey {
         }
 
         pub fn sign(&self, data: &[u8], trusted: &str) -> String {
-            minisign::sign(Some(&self.pair.pk), &self.pair.sk, Cursor::new(data), Some(trusted), None)
-                .unwrap()
-                .to_string()
+            minisign::sign(
+                Some(&self.pair.pk),
+                &self.pair.sk,
+                Cursor::new(data),
+                Some(trusted),
+                None,
+            )
+            .unwrap()
+            .to_string()
         }
 
         /// `SHA256SUMS` for `files` and its signature for `version`.
@@ -198,7 +205,10 @@ pub(crate) mod testkey {
                 }
                 let _ = writeln!(sums, "  {name}");
             }
-            let sig = self.sign(sums.as_bytes(), &format!("hearthgate v{version} SHA256SUMS"));
+            let sig = self.sign(
+                sums.as_bytes(),
+                &format!("hearthgate v{version} SHA256SUMS"),
+            );
             (sums.into_bytes(), sig)
         }
     }
@@ -220,8 +230,14 @@ mod tests {
         let checked = verify_sums(&sums, &sig, v("1.3.0"), &[key.public()]).unwrap();
         assert_eq!(checked.names().collect::<Vec<_>>(), ["a.deb", "b.tar.gz"]);
         checked.check_bytes("a.deb", b"package").unwrap();
-        assert_eq!(checked.check_bytes("a.deb", b"evil"), Err(VerifyError::Mismatch("a.deb".into())));
-        assert_eq!(checked.check_bytes("c.rpm", b"x"), Err(VerifyError::NotListed("c.rpm".into())));
+        assert_eq!(
+            checked.check_bytes("a.deb", b"evil"),
+            Err(VerifyError::Mismatch("a.deb".into()))
+        );
+        assert_eq!(
+            checked.check_bytes("c.rpm", b"x"),
+            Err(VerifyError::NotListed("c.rpm".into()))
+        );
     }
 
     #[test]
@@ -231,9 +247,18 @@ mod tests {
         let (sums, sig) = key.release("1.3.0", &[("a.deb", b"package")]);
         let mut tampered = sums.clone();
         tampered[0] = if tampered[0] == b'0' { b'1' } else { b'0' };
-        assert_eq!(verify_sums(&tampered, &sig, v("1.3.0"), &[key.public()]), Err(VerifyError::NotSigned));
-        assert_eq!(verify_sums(&sums, &sig, v("1.3.0"), &[other.public()]), Err(VerifyError::NotSigned));
-        assert_eq!(verify_sums(&sums, "junk", v("1.3.0"), &[key.public()]), Err(VerifyError::BadSignatureFile));
+        assert_eq!(
+            verify_sums(&tampered, &sig, v("1.3.0"), &[key.public()]),
+            Err(VerifyError::NotSigned)
+        );
+        assert_eq!(
+            verify_sums(&sums, &sig, v("1.3.0"), &[other.public()]),
+            Err(VerifyError::NotSigned)
+        );
+        assert_eq!(
+            verify_sums(&sums, "junk", v("1.3.0"), &[key.public()]),
+            Err(VerifyError::BadSignatureFile)
+        );
     }
 
     #[test]
@@ -258,10 +283,13 @@ mod tests {
         for name in ["../hearthgate", "/usr/bin/hearthgate", "a/b", ".."] {
             let sums = format!("{}  {name}\n", "a".repeat(64));
             let sig = key.sign(sums.as_bytes(), "hearthgate v1.3.0");
-            assert!(matches!(
-                verify_sums(sums.as_bytes(), &sig, v("1.3.0"), &[key.public()]),
-                Err(VerifyError::BadSums(_))
-            ), "{name}");
+            assert!(
+                matches!(
+                    verify_sums(sums.as_bytes(), &sig, v("1.3.0"), &[key.public()]),
+                    Err(VerifyError::BadSums(_))
+                ),
+                "{name}"
+            );
         }
     }
 

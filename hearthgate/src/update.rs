@@ -43,7 +43,10 @@ pub fn updater(bootstrap: &Bootstrap) -> Arc<Updater> {
 pub fn spawn(updater: Arc<Updater>, stop: CancellationToken) {
     tokio::spawn(updater.run(stop, |current, available| {
         let v = available.version;
-        tracing::info!("Hearthgate {v} is available (this is {current}): {}", available.page);
+        tracing::info!(
+            "Hearthgate {v} is available (this is {current}): {}",
+            available.page
+        );
         emit(Event::new(
             EventKind::Updates,
             Severity::Info,
@@ -59,12 +62,18 @@ pub fn spawn(updater: Arc<Updater>, stop: CancellationToken) {
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime> {
-    Ok(tokio::runtime::Builder::new_current_thread().enable_all().build()?)
+    Ok(tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?)
 }
 
 fn when(unix: u64) -> String {
     jiff::Timestamp::from_second(i64::try_from(unix).unwrap_or(0))
-        .map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m-%d %H:%M").to_string())
+        .map(|t| {
+            t.to_zoned(jiff::tz::TimeZone::system())
+                .strftime("%Y-%m-%d %H:%M")
+                .to_string()
+        })
         .unwrap_or_default()
 }
 
@@ -117,11 +126,16 @@ pub(crate) fn run(bootstrap: &Bootstrap, action: UpdateCommand) -> Result<ExitCo
                 Some(a) => println!("{} is available ({:?}): {}", a.version, a.bump, a.page),
                 None => println!(
                     "No newer release known{}.",
-                    info.checked_unix.map(|t| format!(" (checked {})", when(t))).unwrap_or_default()
+                    info.checked_unix
+                        .map(|t| format!(" (checked {})", when(t)))
+                        .unwrap_or_default()
                 ),
             }
             if let Some(v) = info.scheduled {
-                println!("{v} installs in the next window ({}).", info.settings.window);
+                println!(
+                    "{v} installs in the next window ({}).",
+                    info.settings.window
+                );
             }
             if let Some(v) = info.rollback_to {
                 println!("{v} is kept for a rollback: hearthgate update rollback");
@@ -131,10 +145,16 @@ pub(crate) fn run(bootstrap: &Bootstrap, action: UpdateCommand) -> Result<ExitCo
             }
         }
         UpdateCommand::Check => {
-            let latest = runtime()?.block_on(updater.latest()).map_err(anyhow::Error::msg)?;
+            let latest = runtime()?
+                .block_on(updater.latest())
+                .map_err(anyhow::Error::msg)?;
             match latest {
                 Some(a) => {
-                    println!("Hearthgate {} is available (this is {}).", a.version, crate::VERSION);
+                    println!(
+                        "Hearthgate {} is available (this is {}).",
+                        a.version,
+                        crate::VERSION
+                    );
                     for n in &a.notes {
                         println!("  {:?}: {}", n.kind, n.text);
                     }
@@ -154,7 +174,8 @@ pub(crate) fn run(bootstrap: &Bootstrap, action: UpdateCommand) -> Result<ExitCo
                 return Ok(ExitCode::SUCCESS);
             };
             let version = match version {
-                Some(v) => Version::parse(&v).ok_or_else(|| anyhow::anyhow!("{v} is not a release version"))?,
+                Some(v) => Version::parse(&v)
+                    .ok_or_else(|| anyhow::anyhow!("{v} is not a release version"))?,
                 None => available.version,
             };
             let result = rt.block_on(updater.install(version, true));
@@ -195,7 +216,10 @@ pub(crate) fn apply(bootstrap: &Bootstrap) -> Result<ExitCode> {
         bail!("the upgrade helper runs as root, from hearthgate-upgrade.service");
     }
     let Some(current) = Version::parse(crate::VERSION) else {
-        bail!("this is a development build ({}), which is not upgraded", crate::VERSION);
+        bail!(
+            "this is a development build ({}), which is not upgraded",
+            crate::VERSION
+        );
     };
     let Some(arch) = Arch::current() else {
         bail!("there are no releases for this CPU");
@@ -218,7 +242,9 @@ pub(crate) fn apply(bootstrap: &Bootstrap) -> Result<ExitCode> {
         println!("{line}");
     }
     Ok(match job.outcome {
-        Outcome::Installed | Outcome::Restored | Outcome::Refused | Outcome::RolledBack => ExitCode::SUCCESS,
+        Outcome::Installed | Outcome::Restored | Outcome::Refused | Outcome::RolledBack => {
+            ExitCode::SUCCESS
+        }
         Outcome::Running | Outcome::Failed => ExitCode::FAILURE,
     })
 }

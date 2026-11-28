@@ -19,7 +19,10 @@ pub fn open_nofollow(path: &Path) -> io::Result<File> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)?;
     if !file.metadata()?.is_file() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
     }
     Ok(file)
 }
@@ -30,7 +33,10 @@ pub fn read_limited(path: &Path, max: u64) -> io::Result<Vec<u8>> {
     let mut data = Vec::new();
     file.take(max + 1).read_to_end(&mut data)?;
     if data.len() as u64 > max {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "file is too large"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file is too large",
+        ));
     }
     Ok(data)
 }
@@ -90,7 +96,10 @@ pub fn copy_limited(from: &Path, to: &Path, max: u64, mode: u32) -> io::Result<(
     let result = (|| {
         let copied = io::copy(&mut (&mut src).take(max + 1), &mut dst)?;
         if copied > max {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "file is too large"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "file is too large",
+            ));
         }
         dst.set_permissions(std::fs::Permissions::from_mode(mode))?;
         dst.sync_all()?;
@@ -146,7 +155,12 @@ mod tests {
         // Writing replaces the link instead of writing through it.
         write_atomic(&link, b"{}", 0o644).unwrap();
         assert_eq!(std::fs::read(&secret).unwrap(), b"root only");
-        assert!(!std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(
+            !std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         let ldir = dir.path().join("ldir");
         std::os::unix::fs::symlink(dir.path(), &ldir).unwrap();
         assert!(ensure_dir(&ldir, 0o700).is_err());

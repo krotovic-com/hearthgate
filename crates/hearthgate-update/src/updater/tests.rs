@@ -65,7 +65,10 @@ fn setup(current: &str, method: Method, settings: Updates) -> Setup {
     );
     let (sums, sig) = key.release("1.3.0", &[(DEB, b"package")]);
     fetch.put(github::asset_url(v("1.3.0"), "SHA256SUMS"), sums);
-    fetch.put(github::asset_url(v("1.3.0"), "SHA256SUMS.minisig"), sig.into_bytes());
+    fetch.put(
+        github::asset_url(v("1.3.0"), "SHA256SUMS.minisig"),
+        sig.into_bytes(),
+    );
     fetch.put(github::asset_url(v("1.3.0"), DEB), b"package".to_vec());
     let updater = Updater::new(Config {
         layout,
@@ -77,7 +80,12 @@ fn setup(current: &str, method: Method, settings: Updates) -> Setup {
         keys: vec![key.public()],
         settings,
     });
-    Setup { _dir: dir, fetch, updater, key }
+    Setup {
+        _dir: dir,
+        fetch,
+        updater,
+        key,
+    }
 }
 
 #[tokio::test]
@@ -89,7 +97,14 @@ async fn finds_the_newest_release_and_its_notes() {
     assert_eq!(a.bump, Bump::Minor);
     assert_eq!(a.asset.as_deref(), Some(DEB));
     let texts: Vec<&str> = a.notes.iter().map(|n| n.text.as_str()).collect();
-    assert_eq!(texts, ["Check for updates from the dashboard", "Fix a crash", "Fix the firewall"]);
+    assert_eq!(
+        texts,
+        [
+            "Check for updates from the dashboard",
+            "Fix a crash",
+            "Fix the firewall"
+        ]
+    );
     assert!(info.can_install);
 
     let s = setup("1.3.0", Method::Deb, Updates::default());
@@ -103,25 +118,41 @@ async fn install_downloads_verifies_and_asks_the_helper() {
     s.updater.install(v("1.3.0"), true).await.unwrap();
     let layout = s.updater.layout();
     let request: Request = read_json(&layout.request()).unwrap();
-    assert_eq!(request, Request::Install { version: v("1.3.0") });
+    assert_eq!(
+        request,
+        Request::Install {
+            version: v("1.3.0")
+        }
+    );
     let dir = layout.download_dir(v("1.3.0"));
     assert_eq!(std::fs::read(dir.join(DEB)).unwrap(), b"package");
     // A second one waits for the first.
-    assert!(s.updater.install(v("1.3.0"), true).await.unwrap_err().contains("already"));
+    assert!(
+        s.updater
+            .install(v("1.3.0"), true)
+            .await
+            .unwrap_err()
+            .contains("already")
+    );
 }
 
 #[tokio::test]
 async fn refuses_a_bad_signature_or_a_changed_file() {
     let s = setup("1.2.0", Method::Deb, Updates::default());
     s.updater.check().await.unwrap();
-    s.fetch.put(github::asset_url(v("1.3.0"), DEB), b"evil".to_vec());
+    s.fetch
+        .put(github::asset_url(v("1.3.0"), DEB), b"evil".to_vec());
     assert!(s.updater.install(v("1.3.0"), true).await.is_err());
     assert!(!s.updater.layout().request().exists());
 
     let other = TestKey::new();
     let (sums, sig) = other.release("1.3.0", &[(DEB, b"evil")]);
-    s.fetch.put(github::asset_url(v("1.3.0"), "SHA256SUMS"), sums);
-    s.fetch.put(github::asset_url(v("1.3.0"), "SHA256SUMS.minisig"), sig.into_bytes());
+    s.fetch
+        .put(github::asset_url(v("1.3.0"), "SHA256SUMS"), sums);
+    s.fetch.put(
+        github::asset_url(v("1.3.0"), "SHA256SUMS.minisig"),
+        sig.into_bytes(),
+    );
     assert!(s.updater.install(v("1.3.0"), true).await.is_err());
     assert!(!s.updater.layout().request().exists());
     let _ = &s.key;
@@ -151,12 +182,26 @@ async fn installs_by_itself_only_when_allowed_and_in_the_window() {
     assert!(!s.updater.layout().request().exists());
 
     // Patch only: a minor release waits for the person.
-    let s = setup("1.2.0", Method::Deb, Updates { auto_install: AutoInstall::Patch, ..Updates::default() });
+    let s = setup(
+        "1.2.0",
+        Method::Deb,
+        Updates {
+            auto_install: AutoInstall::Patch,
+            ..Updates::default()
+        },
+    );
     s.updater.tick(four, &quiet).await;
     assert!(!s.updater.layout().request().exists());
 
     // Minor: outside the window nothing happens, inside it installs.
-    let s = setup("1.2.0", Method::Deb, Updates { auto_install: AutoInstall::Minor, ..Updates::default() });
+    let s = setup(
+        "1.2.0",
+        Method::Deb,
+        Updates {
+            auto_install: AutoInstall::Minor,
+            ..Updates::default()
+        },
+    );
     s.updater.tick(noon, &quiet).await;
     assert!(!s.updater.layout().request().exists());
     s.updater.tick(four, &quiet).await;
@@ -195,7 +240,14 @@ async fn notifies_once_and_not_for_skipped() {
 
 #[tokio::test]
 async fn a_rolled_back_version_is_skipped() {
-    let s = setup("1.2.0", Method::Deb, Updates { auto_install: AutoInstall::Minor, ..Updates::default() });
+    let s = setup(
+        "1.2.0",
+        Method::Deb,
+        Updates {
+            auto_install: AutoInstall::Minor,
+            ..Updates::default()
+        },
+    );
     s.updater.check().await.unwrap();
     let job = Job {
         action: crate::state::Action::Install,
@@ -218,7 +270,12 @@ async fn a_rolled_back_version_is_skipped() {
 async fn rollback_needs_a_kept_version() {
     let s = setup("1.3.0", Method::Deb, Updates::default());
     assert!(s.updater.rollback().is_err());
-    let kept = Backup { version: v("1.2.0"), method: Method::Deb, package: None, taken_unix: 1 };
+    let kept = Backup {
+        version: v("1.2.0"),
+        method: Method::Deb,
+        package: None,
+        taken_unix: 1,
+    };
     write_json(&s.updater.layout().kept(), &kept, 0o644).unwrap();
     assert_eq!(s.updater.info().rollback_to, Some(v("1.2.0")));
     s.updater.rollback().unwrap();

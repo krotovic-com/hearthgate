@@ -12,6 +12,8 @@ fn verifies_a_signature_from_the_minisign_tool() {
     let sig = include_str!("fixtures/SHA256SUMS.minisig");
     let v = Version::parse("1.3.0").unwrap();
     let checked = verify_sums(sums, sig, v, std::slice::from_ref(&key)).unwrap();
-    checked.check_bytes("hearthgate_1.3.0_amd64.deb", b"hearthgate 1.3.0\n").unwrap();
+    checked
+        .check_bytes("hearthgate_1.3.0_amd64.deb", b"hearthgate 1.3.0\n")
+        .unwrap();
     assert!(verify_sums(sums, sig, Version::parse("1.3.1").unwrap(), &[key]).is_err());
 }

@@ -22,4 +22,4 @@ to = ["you@example.com"]
 
 JSON webhooks get `title`, `message`, `kind`, `severity`, `time` and `host`, plus `text` and `content` with the whole message. Webhook URLs often contain a secret and are stored with the state; the SMTP password stays in its file (`chown root:hearthgate`, `chmod 0640`).
 
-**Release checks.** Once a day Hearthgate asks GitHub whether a newer release exists, logs it and sends an `updates` notification. It never installs anything. Turn the check off with `updates.check = false` in the bootstrap file.
+**Release checks.** Once a day Hearthgate asks GitHub whether a newer release exists, logs it and sends an `updates` notification once per release. It installs nothing unless you turn on automatic installs; see [Updates](updates.md).

@@ -15,6 +15,7 @@ import {
   type NotificationSettings,
   type EmailSettings,
   type AiSettings,
+  type UpdateSettings,
 } from './api';
 import { canonical, compact, withDefaults } from './firewall';
 import { compactDns, compactVpn, dnsWithDefaults, vpnWithDefaults, type FullDns, type FullVpn } from './vpn';
@@ -144,6 +145,9 @@ export function edit(change: (state: ReturnType<typeof complete>) => void): void
   const ai = compactAi(next.ai);
   if (ai) next.ai = ai;
   else delete next.ai;
+  const updates = compactUpdates(next.updates);
+  if (updates) next.updates = updates;
+  else delete next.updates;
   for (const i of next.interfaces) if (!i.rate_limit) delete i.rate_limit;
   gw.draft = next;
 }
@@ -167,6 +171,27 @@ export function compactAi(a: AiSettings | undefined): AiSettings | undefined {
     out.timeout === '2m' &&
     Object.keys(out).length === 3;
   return isDefault ? undefined : out;
+}
+
+/** Update settings with defaults filled in. */
+export function updatesWithDefaults(u: UpdateSettings | undefined): Required<UpdateSettings> {
+  return { check: u?.check ?? true, auto_install: u?.auto_install ?? 'off', window: u?.window || '03:00-05:00' };
+}
+
+/** Update settings as the server stores them: left out while all default. */
+export function compactUpdates(u: UpdateSettings | undefined): UpdateSettings | undefined {
+  const full = updatesWithDefaults(u);
+  const isDefault = full.check && full.auto_install === 'off' && full.window === '03:00-05:00';
+  return isDefault ? undefined : full;
+}
+
+/** Changes the draft's update settings. */
+export function editUpdates(change: (u: Required<UpdateSettings>) => void): void {
+  edit((s) => {
+    const u = updatesWithDefaults(s.updates);
+    change(u);
+    s.updates = u;
+  });
 }
 
 /** Changes the draft's AI assistant settings. */

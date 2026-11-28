@@ -20,9 +20,7 @@ pub trait Fetch: Send + Sync {
 /// asset downloads through.
 #[must_use]
 pub fn allowed_host(host: &str) -> bool {
-    host == "github.com"
-        || host == "api.github.com"
-        || host.ends_with(".githubusercontent.com")
+    host == "github.com" || host == "api.github.com" || host.ends_with(".githubusercontent.com")
 }
 
 /// HTTPS downloads with the system's trusted certificates.
@@ -57,8 +55,14 @@ async fn download(url: &str, max: u64) -> Result<Vec<u8>, String> {
             return Err(format!("refusing to download from {url}"));
         }
         let req = http::Request::get(uri.clone())
-            .header(http::header::USER_AGENT, concat!("hearthgate/", env!("CARGO_PKG_VERSION")))
-            .header(http::header::ACCEPT, "application/vnd.github+json, application/octet-stream")
+            .header(
+                http::header::USER_AGENT,
+                concat!("hearthgate/", env!("CARGO_PKG_VERSION")),
+            )
+            .header(
+                http::header::ACCEPT,
+                "application/vnd.github+json, application/octet-stream",
+            )
             .body(Empty::new())
             .map_err(|e| e.to_string())?;
         let resp = tokio::time::timeout(CONNECT_TIMEOUT, client.request(req))
@@ -85,11 +89,12 @@ async fn download(url: &str, max: u64) -> Result<Vec<u8>, String> {
         if !status.is_success() {
             return Err(format!("GitHub answered {status}"));
         }
-        let body = tokio::time::timeout(BODY_TIMEOUT, Limited::new(resp.into_body(), max).collect())
-            .await
-            .map_err(|_| "the download took too long".to_owned())?
-            .map_err(|e| format!("download failed: {e}"))?
-            .to_bytes();
+        let body =
+            tokio::time::timeout(BODY_TIMEOUT, Limited::new(resp.into_body(), max).collect())
+                .await
+                .map_err(|_| "the download took too long".to_owned())?
+                .map_err(|e| format!("download failed: {e}"))?
+                .to_bytes();
         return Ok(body.to_vec());
     }
     Err("too many redirects".into())
@@ -111,7 +116,19 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_other_hosts_and_plain_http() {
-        assert!(HttpFetch.get("https://example.com/x", 10).await.unwrap_err().contains("refusing"));
-        assert!(HttpFetch.get("http://github.com/x", 10).await.unwrap_err().contains("refusing"));
+        assert!(
+            HttpFetch
+                .get("https://example.com/x", 10)
+                .await
+                .unwrap_err()
+                .contains("refusing")
+        );
+        assert!(
+            HttpFetch
+                .get("http://github.com/x", 10)
+                .await
+                .unwrap_err()
+                .contains("refusing")
+        );
     }
 }

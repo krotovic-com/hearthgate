@@ -13,10 +13,36 @@
   import { attentionItems, serviceHealth } from '../lib/health';
   import { ago, clock, duration, plural, portLabel } from '../lib/format';
   import { navigate } from '../lib/router.svelte';
+  import UpdateSummary from '../lib/updates/UpdateSummary.svelte';
+  import { loadUpdates, updates } from '../lib/updates.svelte';
+  import { waitsReason } from '../lib/updates';
 
   let traffic = $state<TrafficBucket[]>([]);
 
+  // "Later" hides a release until the next visit.
+  let later = $state<string | null>(null);
+  try {
+    later = sessionStorage.getItem('hearthgate-update-later');
+  } catch {
+    /* storage may be blocked */
+  }
+  const update = $derived.by(() => {
+    const info = updates.info;
+    const a = info?.available;
+    if (!info || !a || info.skipped.includes(a.version) || later === a.version) return null;
+    return { info, a };
+  });
+  function hideUpdate(version: string) {
+    later = version;
+    try {
+      sessionStorage.setItem('hearthgate-update-later', version);
+    } catch {
+      /* fine: hidden for this page only */
+    }
+  }
+
   onMount(() => {
+    void loadUpdates();
     const load = () =>
       api
         .traffic()
@@ -106,6 +132,23 @@
   {/snippet}
 </PageHeader>
 
+{#if update}
+  <div class="update">
+    <UpdateSummary
+      status="available"
+      title="Hearthgate {update.a.version} is available"
+      description={waitsReason(update.info, update.a)}
+    >
+      {#snippet actions()}
+        <Button variant="ghost" onclick={() => hideUpdate(update.a.version)}>Later</Button>
+        <Button onclick={() => navigate(`/settings?section=updates${update.info.can_install ? '&install=1' : ''}`)}
+          >Review update</Button
+        >
+      {/snippet}
+    </UpdateSummary>
+  </div>
+{/if}
+
 <div class="stats">
   <StatCard
     label="Public interfaces"
@@ -188,6 +231,12 @@
 </div>
 
 <style>
+  .update {
+    padding: var(--hg-spacing-lg) var(--hg-spacing-xl);
+    background: var(--hg-color-bg-surface);
+    border: 1px solid var(--hg-color-border-default);
+    border-radius: var(--hg-radius-lg);
+  }
   .stats {
     display: flex;
     gap: var(--hg-spacing-lg);

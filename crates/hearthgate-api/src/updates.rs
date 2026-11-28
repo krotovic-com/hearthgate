@@ -46,8 +46,12 @@ pub struct VersionRequest {
 }
 
 fn version(text: &str) -> Result<Version, ApiError> {
-    Version::parse(text)
-        .ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, format!("{text:?} is not a release version")))
+    Version::parse(text).ok_or_else(|| {
+        ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("{text:?} is not a release version"),
+        )
+    })
 }
 
 fn conflict(e: String) -> ApiError {
@@ -64,12 +68,12 @@ pub(crate) async fn info(State(state): State<ApiState>) -> ApiResult<UpdateInfo>
     description = "Ask GitHub for releases now.",
     responses((status = 200, body = UpdateInfo), (status = 502, body = crate::routes::Problem)))]
 pub(crate) async fn check(State(state): State<ApiState>) -> ApiResult<UpdateInfo> {
-    state
-        .updates
-        .check()
-        .await
-        .map(Json)
-        .map_err(|e| ApiError::new(StatusCode::BAD_GATEWAY, format!("cannot check for updates: {e}")))
+    state.updates.check().await.map(Json).map_err(|e| {
+        ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("cannot check for updates: {e}"),
+        )
+    })
 }
 
 #[utoipa::path(post, path = "/api/v1/updates/install", tag = "updates",
@@ -84,7 +88,12 @@ pub(crate) async fn install(
     Json(req): Json<InstallRequest>,
 ) -> ApiResult<UpdateInfo> {
     let v = version(&req.version)?;
-    state.updates.install(v, req.when == When::Now).await.map(Json).map_err(conflict)
+    state
+        .updates
+        .install(v, req.when == When::Now)
+        .await
+        .map(Json)
+        .map_err(conflict)
 }
 
 #[utoipa::path(delete, path = "/api/v1/updates/scheduled", tag = "updates",

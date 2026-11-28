@@ -37,7 +37,10 @@ pub fn parse(body: &str) -> Vec<Note> {
             let heading = heading.trim_start_matches('#').trim().to_ascii_lowercase();
             section = if heading.starts_with("feature") {
                 Some(NoteKind::Feature)
-            } else if heading.starts_with("bug") || heading.starts_with("fix") || heading.starts_with("perf") {
+            } else if heading.starts_with("bug")
+                || heading.starts_with("fix")
+                || heading.starts_with("perf")
+            {
                 Some(NoteKind::Fix)
             } else if heading.starts_with("security") {
                 Some(NoteKind::Security)
@@ -53,7 +56,9 @@ pub fn parse(body: &str) -> Vec<Note> {
         // Trailing commit hash, such as " (abc1234)".
         if let Some(open) = text.rfind(" (")
             && text.ends_with(')')
-            && text[open + 2..text.len() - 1].bytes().all(|b| b.is_ascii_hexdigit())
+            && text[open + 2..text.len() - 1]
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit())
         {
             text.truncate(open);
         }

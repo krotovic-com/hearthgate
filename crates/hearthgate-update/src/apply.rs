@@ -16,7 +16,9 @@ use minisign_verify::PublicKey;
 
 use crate::files::{copy_limited, ensure_dir, read_json, read_limited, write_atomic, write_json};
 use crate::method::{Arch, Method, pick_asset};
-use crate::state::{Action, Backup, HISTORY, Health, Job, Layout, Outcome, Request, Step, StepState};
+use crate::state::{
+    Action, Backup, HISTORY, Health, Job, Layout, Outcome, Request, Step, StepState,
+};
 use crate::verify::{MAX_SIGNATURE_BYTES, MAX_SUMS_BYTES, verify_sums};
 use crate::{Version, github};
 
@@ -41,7 +43,10 @@ impl System for Host {
     fn run(&self, program: &str, args: &[&str]) -> (bool, String) {
         match std::process::Command::new(program)
             .args(args)
-            .env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+            .env(
+                "PATH",
+                "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            )
             .env("DEBIAN_FRONTEND", "noninteractive")
             .stdin(std::process::Stdio::null())
             .output()
@@ -103,8 +108,18 @@ impl Helper<'_> {
             Some(Request::Install { version }) => self.install(version),
             Some(Request::Rollback) => self.rollback(),
             None if present => {
-                let mut job = Job::new(Action::Install, self.current, None, &[], self.system.now_unix());
-                job.finish(Outcome::Refused, "The request was not readable, so nothing was changed.", self.system.now_unix());
+                let mut job = Job::new(
+                    Action::Install,
+                    self.current,
+                    None,
+                    &[],
+                    self.system.now_unix(),
+                );
+                job.finish(
+                    Outcome::Refused,
+                    "The request was not readable, so nothing was changed.",
+                    self.system.now_unix(),
+                );
                 job
             }
             None => return None,
@@ -126,7 +141,10 @@ impl Helper<'_> {
     fn step(&self, job: &mut Job, i: usize, state: StepState, detail: Option<String>) {
         job.steps[i].state = state;
         if let Some(d) = detail {
-            job.log(self.system.now_unix(), &format!("{}: {d}", job.steps[i].title));
+            job.log(
+                self.system.now_unix(),
+                &format!("{}: {d}", job.steps[i].title),
+            );
             job.steps[i].detail = d;
         }
         self.save(job, false);
@@ -142,7 +160,10 @@ impl Helper<'_> {
         if ok {
             Ok(out)
         } else {
-            Err(format!("{program} failed: {}", out.lines().last().unwrap_or("no output").trim()))
+            Err(format!(
+                "{program} failed: {}",
+                out.lines().last().unwrap_or("no output").trim()
+            ))
         }
     }
 
@@ -151,11 +172,20 @@ impl Helper<'_> {
     fn install(&self, version: Version) -> Job {
         let now = self.system.now_unix();
         let steps = [
-            ("Verify signature and checksum", "Checking the downloaded release again"),
+            (
+                "Verify signature and checksum",
+                "Checking the downloaded release again",
+            ),
             ("Back up settings and the current version", "Waiting"),
             ("Install the new version", self.method.describe()),
-            ("Restart Hearthgate", "Public traffic pauses for a few seconds"),
-            ("Health check", "Proxy, firewall, VPN and dashboard must come up within 2 minutes"),
+            (
+                "Restart Hearthgate",
+                "Public traffic pauses for a few seconds",
+            ),
+            (
+                "Health check",
+                "Proxy, firewall, VPN and dashboard must come up within 2 minutes",
+            ),
         ];
         let mut job = Job::new(Action::Install, self.current, Some(version), &steps, now);
         self.save(&job, false);
@@ -167,11 +197,20 @@ impl Helper<'_> {
             Err(e) => {
                 self.step(&mut job, 0, StepState::Failed, Some(e.clone()));
                 job.skip_pending();
-                job.finish(Outcome::Refused, &format!("{e}. Nothing was changed."), self.system.now_unix());
+                job.finish(
+                    Outcome::Refused,
+                    &format!("{e}. Nothing was changed."),
+                    self.system.now_unix(),
+                );
                 return job;
             }
         };
-        self.step(&mut job, 0, StepState::Done, Some(format!("{asset} · signature and SHA-256 match")));
+        self.step(
+            &mut job,
+            0,
+            StepState::Done,
+            Some(format!("{asset} · signature and SHA-256 match")),
+        );
 
         // 2. Stop and back up.
         self.step(&mut job, 1, StepState::Running, None);
@@ -179,21 +218,33 @@ impl Helper<'_> {
             self.step(&mut job, 1, StepState::Failed, Some(e.clone()));
             job.skip_pending();
             let _ = self.sh(&mut job, "systemctl", &["start", SERVICE]);
-            job.finish(Outcome::Refused, &format!("{e}. Nothing was changed."), self.system.now_unix());
+            job.finish(
+                Outcome::Refused,
+                &format!("{e}. Nothing was changed."),
+                self.system.now_unix(),
+            );
             return job;
         }
         if let Err(e) = self.backup() {
             self.step(&mut job, 1, StepState::Failed, Some(e.clone()));
             job.skip_pending();
             let _ = self.sh(&mut job, "systemctl", &["start", SERVICE]);
-            job.finish(Outcome::Refused, &format!("The backup failed ({e}), so nothing was changed."), self.system.now_unix());
+            job.finish(
+                Outcome::Refused,
+                &format!("The backup failed ({e}), so nothing was changed."),
+                self.system.now_unix(),
+            );
             return job;
         }
         self.step(
             &mut job,
             1,
             StepState::Done,
-            Some(format!("Settings and {} saved to {}", self.current, self.layout.backup().display())),
+            Some(format!(
+                "Settings and {} saved to {}",
+                self.current,
+                self.layout.backup().display()
+            )),
         );
 
         // 3. Install.
@@ -203,7 +254,12 @@ impl Helper<'_> {
             job.skip_pending();
             return self.recover(job, &format!("Installing {version} failed: {e}"));
         }
-        self.step(&mut job, 2, StepState::Done, Some(format!("{version} installed · {}", self.method.describe())));
+        self.step(
+            &mut job,
+            2,
+            StepState::Done,
+            Some(format!("{version} installed · {}", self.method.describe())),
+        );
 
         // 4. Start.
         self.step(&mut job, 3, StepState::Running, None);
@@ -219,11 +275,19 @@ impl Helper<'_> {
         self.step(&mut job, 4, StepState::Running, None);
         match self.wait_healthy(&mut job, &version.to_string(), started, true) {
             Ok(()) => {
-                self.step(&mut job, 4, StepState::Done, Some("Everything came up".into()));
+                self.step(
+                    &mut job,
+                    4,
+                    StepState::Done,
+                    Some("Everything came up".into()),
+                );
                 self.keep_package(&asset, version);
                 job.finish(
                     Outcome::Installed,
-                    &format!("Hearthgate {version} is running. {} is kept for a rollback.", self.current),
+                    &format!(
+                        "Hearthgate {version} is running. {} is kept for a rollback.",
+                        self.current
+                    ),
                     self.system.now_unix(),
                 );
                 job
@@ -238,7 +302,10 @@ impl Helper<'_> {
     /// Copies the download out of the daemon's reach and verifies the copy.
     fn verify(&self, version: Version) -> Result<String, String> {
         if version <= self.current {
-            return Err(format!("{version} is not newer than the installed {}", self.current));
+            return Err(format!(
+                "{version} is not newer than the installed {}",
+                self.current
+            ));
         }
         if self.method == Method::Manual {
             return Err("this Hearthgate was not installed from a package or install.sh".into());
@@ -253,23 +320,34 @@ impl Helper<'_> {
         };
         copy("SHA256SUMS", MAX_SUMS_BYTES as u64)?;
         copy("SHA256SUMS.minisig", MAX_SIGNATURE_BYTES as u64)?;
-        let sums = read_limited(&work.join("SHA256SUMS"), MAX_SUMS_BYTES as u64).map_err(|e| e.to_string())?;
+        let sums = read_limited(&work.join("SHA256SUMS"), MAX_SUMS_BYTES as u64)
+            .map_err(|e| e.to_string())?;
         let sig = read_limited(&work.join("SHA256SUMS.minisig"), MAX_SIGNATURE_BYTES as u64)
             .map_err(|e| e.to_string())?;
         let sig = String::from_utf8(sig).map_err(|_| "the signature is not text".to_owned())?;
         let checked = verify_sums(&sums, &sig, version, &self.keys).map_err(|e| e.to_string())?;
         let asset = pick_asset(checked.names(), self.method, version, self.arch)
-            .ok_or_else(|| format!("the release has no {} for this machine", self.method.describe()))?
+            .ok_or_else(|| {
+                format!(
+                    "the release has no {} for this machine",
+                    self.method.describe()
+                )
+            })?
             .to_owned();
         copy(&asset, MAX_ASSET_BYTES)?;
-        checked.check_file(&asset, &work.join(&asset)).map_err(|e| e.to_string())?;
+        checked
+            .check_file(&asset, &work.join(&asset))
+            .map_err(|e| e.to_string())?;
         Ok(asset)
     }
 
     fn unit_paths(&self) -> Vec<&'static str> {
         match self.method {
             Method::Tarball => vec!["/etc/systemd/system/hearthgate.service"],
-            _ => vec!["/usr/lib/systemd/system/hearthgate.service", "/lib/systemd/system/hearthgate.service"],
+            _ => vec![
+                "/usr/lib/systemd/system/hearthgate.service",
+                "/lib/systemd/system/hearthgate.service",
+            ],
         }
     }
 
@@ -285,12 +363,22 @@ impl Helper<'_> {
         let _ = std::fs::remove_dir_all(&dir);
         ensure_dir(&dir, 0o700).map_err(|e| e.to_string())?;
         let binary = self.method.binary().ok_or("no binary to back up")?;
-        copy_limited(&self.at(binary), &dir.join("hearthgate"), MAX_ENTRY_BYTES, 0o755)
-            .map_err(|e| format!("{binary}: {e}"))?;
+        copy_limited(
+            &self.at(binary),
+            &dir.join("hearthgate"),
+            MAX_ENTRY_BYTES,
+            0o755,
+        )
+        .map_err(|e| format!("{binary}: {e}"))?;
         for unit in self.unit_paths() {
             if self.at(unit).is_file() {
-                copy_limited(&self.at(unit), &dir.join("hearthgate.service"), 1 << 20, 0o644)
-                    .map_err(|e| format!("{unit}: {e}"))?;
+                copy_limited(
+                    &self.at(unit),
+                    &dir.join("hearthgate.service"),
+                    1 << 20,
+                    0o644,
+                )
+                .map_err(|e| format!("{unit}: {e}"))?;
                 break;
             }
         }
@@ -304,8 +392,13 @@ impl Helper<'_> {
         }
         let package = self.installed_package(self.current);
         if let Some(p) = &package {
-            copy_limited(&self.layout.helper_dir.join("packages").join(p), &dir.join(p), MAX_ASSET_BYTES, 0o600)
-                .map_err(|e| e.to_string())?;
+            copy_limited(
+                &self.layout.helper_dir.join("packages").join(p),
+                &dir.join(p),
+                MAX_ASSET_BYTES,
+                0o600,
+            )
+            .map_err(|e| e.to_string())?;
         }
         let meta = Backup {
             version: self.current,
@@ -330,9 +423,14 @@ impl Helper<'_> {
             .filter_map(Result::ok)
             .filter_map(|e| e.file_name().into_string().ok())
             .collect();
-        pick_asset(names.iter().map(String::as_str), self.method, version, self.arch)
-            .filter(|_| matches!(self.method, Method::Deb | Method::Rpm))
-            .map(str::to_owned)
+        pick_asset(
+            names.iter().map(String::as_str),
+            self.method,
+            version,
+            self.arch,
+        )
+        .filter(|_| matches!(self.method, Method::Deb | Method::Rpm))
+        .map(str::to_owned)
     }
 
     fn keep_package(&self, asset: &str, version: Version) {
@@ -357,7 +455,11 @@ impl Helper<'_> {
         let file = file.to_str().ok_or("bad path")?.to_owned();
         match self.method {
             Method::Deb => {
-                self.sh(job, "apt-get", &["install", "-y", "--allow-downgrades", &file])?;
+                self.sh(
+                    job,
+                    "apt-get",
+                    &["install", "-y", "--allow-downgrades", &file],
+                )?;
             }
             Method::Rpm => self.rpm_install(job, &file)?,
             Method::Tarball => self.unpack_tarball(&PathBuf::from(&file), version)?,
@@ -370,16 +472,29 @@ impl Helper<'_> {
     fn rpm_install(&self, job: &mut Job, file: &str) -> Result<(), String> {
         // The helper has no network: only the local file, no repositories.
         if self.at("/usr/bin/dnf").exists() {
-            self.sh(job, "dnf", &["install", "-y", "--disablerepo=*", "--allowerasing", file]).map(drop)
+            self.sh(
+                job,
+                "dnf",
+                &["install", "-y", "--disablerepo=*", "--allowerasing", file],
+            )
+            .map(drop)
         } else if self.at("/usr/bin/zypper").exists() {
             self.sh(
                 job,
                 "zypper",
-                &["--non-interactive", "--no-refresh", "install", "--allow-unsigned-rpm", "--oldpackage", file],
+                &[
+                    "--non-interactive",
+                    "--no-refresh",
+                    "install",
+                    "--allow-unsigned-rpm",
+                    "--oldpackage",
+                    file,
+                ],
             )
             .map(drop)
         } else {
-            self.sh(job, "yum", &["install", "-y", "--disablerepo=*", file]).map(drop)
+            self.sh(job, "yum", &["install", "-y", "--disablerepo=*", file])
+                .map(drop)
         }
     }
 
@@ -389,9 +504,21 @@ impl Helper<'_> {
         let prefix = format!("hearthgate-v{version}-{}/", self.arch.target);
         let wanted = [
             ("hearthgate", "/usr/local/bin/hearthgate", 0o755),
-            ("hearthgate.service", "/etc/systemd/system/hearthgate.service", 0o644),
-            ("hearthgate-upgrade.service", "/etc/systemd/system/hearthgate-upgrade.service", 0o644),
-            ("hearthgate-upgrade.path", "/etc/systemd/system/hearthgate-upgrade.path", 0o644),
+            (
+                "hearthgate.service",
+                "/etc/systemd/system/hearthgate.service",
+                0o644,
+            ),
+            (
+                "hearthgate-upgrade.service",
+                "/etc/systemd/system/hearthgate-upgrade.service",
+                0o644,
+            ),
+            (
+                "hearthgate-upgrade.path",
+                "/etc/systemd/system/hearthgate-upgrade.path",
+                0o644,
+            ),
         ];
         let file = crate::files::open_nofollow(archive).map_err(|e| e.to_string())?;
         let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
@@ -401,17 +528,31 @@ impl Helper<'_> {
             if !entry.header().entry_type().is_file() {
                 continue;
             }
-            let path = entry.path().map_err(|e| e.to_string())?.to_string_lossy().into_owned();
-            let Some(name) = path.strip_prefix(&prefix) else { continue };
-            let Some((_, dest, mode)) = wanted.iter().find(|(n, _, _)| *n == name) else { continue };
+            let path = entry
+                .path()
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .into_owned();
+            let Some(name) = path.strip_prefix(&prefix) else {
+                continue;
+            };
+            let Some((_, dest, mode)) = wanted.iter().find(|(n, _, _)| *n == name) else {
+                continue;
+            };
             let mut data = Vec::new();
-            (&mut entry).take(MAX_ENTRY_BYTES + 1).read_to_end(&mut data).map_err(|e| e.to_string())?;
+            (&mut entry)
+                .take(MAX_ENTRY_BYTES + 1)
+                .read_to_end(&mut data)
+                .map_err(|e| e.to_string())?;
             if data.len() as u64 > MAX_ENTRY_BYTES {
                 return Err(format!("{name} in the archive is too large"));
             }
             found.push((data, dest, *mode));
         }
-        if !found.iter().any(|(_, d, _)| *d == "/usr/local/bin/hearthgate") {
+        if !found
+            .iter()
+            .any(|(_, d, _)| *d == "/usr/local/bin/hearthgate")
+        {
             return Err("the archive has no hearthgate binary".into());
         }
         for (data, dest, mode) in found {
@@ -425,7 +566,13 @@ impl Helper<'_> {
     }
 
     /// Waits until `version` reports healthy after `since`.
-    fn wait_healthy(&self, job: &mut Job, version: &str, since: u64, strict: bool) -> Result<(), String> {
+    fn wait_healthy(
+        &self,
+        job: &mut Job,
+        version: &str,
+        since: u64,
+        strict: bool,
+    ) -> Result<(), String> {
         let deadline = self.system.now_unix() + self.health_timeout.as_secs();
         let mut active_since: Option<u64> = None;
         loop {
@@ -483,7 +630,10 @@ impl Helper<'_> {
             Err(e) => {
                 job.finish(
                     Outcome::Failed,
-                    &format!("{why}, and restoring {} failed too: {e}. See the log.", self.current),
+                    &format!(
+                        "{why}, and restoring {} failed too: {e}. See the log.",
+                        self.current
+                    ),
                     self.system.now_unix(),
                 );
             }
@@ -492,7 +642,8 @@ impl Helper<'_> {
     }
 
     fn read_backup(&self) -> Result<Backup, String> {
-        read_json(&self.layout.backup().join("backup.json")).ok_or_else(|| "there is no backup to go back to".to_owned())
+        read_json(&self.layout.backup().join("backup.json"))
+            .ok_or_else(|| "there is no backup to go back to".to_owned())
     }
 
     /// Puts the backup in place and starts it. `with_data` restores the
@@ -507,14 +658,25 @@ impl Helper<'_> {
             let file = dir.join(p);
             let file = file.to_str().unwrap_or_default().to_owned();
             via_package = match backup.method {
-                Method::Deb => self.sh(job, "apt-get", &["install", "-y", "--allow-downgrades", &file]).is_ok(),
+                Method::Deb => self
+                    .sh(
+                        job,
+                        "apt-get",
+                        &["install", "-y", "--allow-downgrades", &file],
+                    )
+                    .is_ok(),
                 Method::Rpm => self.rpm_install(job, &file).is_ok(),
                 _ => false,
             };
         }
         if !via_package {
-            copy_limited(&dir.join("hearthgate"), &self.at(binary), MAX_ENTRY_BYTES, 0o755)
-                .map_err(|e| format!("{binary}: {e}"))?;
+            copy_limited(
+                &dir.join("hearthgate"),
+                &self.at(binary),
+                MAX_ENTRY_BYTES,
+                0o755,
+            )
+            .map_err(|e| format!("{binary}: {e}"))?;
             if dir.join("hearthgate.service").is_file() {
                 let unit = match backup.method {
                     Method::Tarball => "/etc/systemd/system/hearthgate.service",
@@ -524,8 +686,13 @@ impl Helper<'_> {
                         .find(|u| self.at(u).is_file())
                         .unwrap_or("/usr/lib/systemd/system/hearthgate.service"),
                 };
-                copy_limited(&dir.join("hearthgate.service"), &self.at(unit), 1 << 20, 0o644)
-                    .map_err(|e| format!("{unit}: {e}"))?;
+                copy_limited(
+                    &dir.join("hearthgate.service"),
+                    &self.at(unit),
+                    1 << 20,
+                    0o644,
+                )
+                .map_err(|e| format!("{unit}: {e}"))?;
             }
         }
         if with_data {
@@ -544,7 +711,8 @@ impl Helper<'_> {
             let from = saved.join(name);
             let _ = std::fs::remove_file(&db);
             if from.is_file() {
-                copy_limited(&from, &db, 1 << 32, 0o600).map_err(|e| format!("{}: {e}", db.display()))?;
+                copy_limited(&from, &db, 1 << 32, 0o600)
+                    .map_err(|e| format!("{}: {e}", db.display()))?;
                 // The daemon runs as its own user and must own its files.
                 let path = db.to_str().unwrap_or_default().to_owned();
                 let _ = self.system.run("chown", &["hearthgate:hearthgate", &path]);
@@ -560,21 +728,42 @@ impl Helper<'_> {
         let to = backup.as_ref().ok().map(|b| b.version);
         let steps = [
             ("Put the previous version back", "Waiting"),
-            ("Restart Hearthgate", "Public traffic pauses for a few seconds"),
+            (
+                "Restart Hearthgate",
+                "Public traffic pauses for a few seconds",
+            ),
             ("Health check", "Waiting for it to come up"),
         ];
         let mut job = Job::new(Action::Rollback, self.current, to, &steps, now);
         self.save(&job, false);
         let Ok(backup) = backup else {
-            self.step(&mut job, 0, StepState::Failed, Some("There is no backup to go back to".into()));
+            self.step(
+                &mut job,
+                0,
+                StepState::Failed,
+                Some("There is no backup to go back to".into()),
+            );
             job.skip_pending();
-            job.finish(Outcome::Refused, "There is no previous version kept, so nothing was changed.", now);
+            job.finish(
+                Outcome::Refused,
+                "There is no previous version kept, so nothing was changed.",
+                now,
+            );
             return job;
         };
         if backup.version >= self.current {
-            self.step(&mut job, 0, StepState::Failed, Some(format!("The kept version is {}", backup.version)));
+            self.step(
+                &mut job,
+                0,
+                StepState::Failed,
+                Some(format!("The kept version is {}", backup.version)),
+            );
             job.skip_pending();
-            job.finish(Outcome::Refused, "The kept version is not older, so nothing was changed.", now);
+            job.finish(
+                Outcome::Refused,
+                "The kept version is not older, so nothing was changed.",
+                now,
+            );
             return job;
         }
         self.step(&mut job, 0, StepState::Running, None);
@@ -582,21 +771,42 @@ impl Helper<'_> {
         // use them, go back to the ones from before the update.
         match self.restore(&mut job, false) {
             Ok(()) => {
-                self.step(&mut job, 0, StepState::Done, Some(format!("{} is back", backup.version)));
+                self.step(
+                    &mut job,
+                    0,
+                    StepState::Done,
+                    Some(format!("{} is back", backup.version)),
+                );
                 self.step(&mut job, 1, StepState::Done, Some("Started".into()));
-                self.step(&mut job, 2, StepState::Done, Some("It came up with your current settings".into()));
+                self.step(
+                    &mut job,
+                    2,
+                    StepState::Done,
+                    Some("It came up with your current settings".into()),
+                );
                 self.drop_backup();
                 job.finish(
                     Outcome::Restored,
-                    &format!("Hearthgate {} is running again, with your current settings.", backup.version),
+                    &format!(
+                        "Hearthgate {} is running again, with your current settings.",
+                        backup.version
+                    ),
                     self.system.now_unix(),
                 );
             }
             Err(first) => {
-                job.log(self.system.now_unix(), &format!("with current settings: {first}"));
+                job.log(
+                    self.system.now_unix(),
+                    &format!("with current settings: {first}"),
+                );
                 match self.restore(&mut job, true) {
                     Ok(()) => {
-                        self.step(&mut job, 0, StepState::Done, Some(format!("{} is back", backup.version)));
+                        self.step(
+                            &mut job,
+                            0,
+                            StepState::Done,
+                            Some(format!("{} is back", backup.version)),
+                        );
                         self.step(&mut job, 1, StepState::Done, Some("Started".into()));
                         self.step(
                             &mut job,
@@ -616,7 +826,11 @@ impl Helper<'_> {
                     }
                     Err(e) => {
                         self.step(&mut job, 2, StepState::Failed, Some(e.clone()));
-                        job.finish(Outcome::Failed, &format!("The rollback failed: {e}. See the log."), self.system.now_unix());
+                        job.finish(
+                            Outcome::Failed,
+                            &format!("The rollback failed: {e}. See the log."),
+                            self.system.now_unix(),
+                        );
                     }
                 }
             }
@@ -626,7 +840,13 @@ impl Helper<'_> {
 }
 
 impl Job {
-    fn new(action: Action, from: Version, to: Option<Version>, steps: &[(&str, &str)], now: u64) -> Self {
+    fn new(
+        action: Action,
+        from: Version,
+        to: Option<Version>,
+        steps: &[(&str, &str)],
+        now: u64,
+    ) -> Self {
         Self {
             action,
             from,

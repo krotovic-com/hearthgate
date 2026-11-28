@@ -1488,7 +1488,12 @@ async fn updates_endpoints_answer() {
     let body = json_of(&body);
     assert_eq!(body["current"], "0.0.0-dev");
     assert_eq!(body["can_install"], false);
-    assert!(body["cannot_install"].as_str().unwrap().contains("development build"));
+    assert!(
+        body["cannot_install"]
+            .as_str()
+            .unwrap()
+            .contains("development build")
+    );
     let (status, body) = call(
         api.port,
         "POST",
@@ -1498,9 +1503,23 @@ async fn updates_endpoints_answer() {
     )
     .await;
     assert_eq!(status, 409, "{body}");
-    let (status, _) = call(api.port, "POST", "/api/v1/updates/skip", t, Some(json!({ "version": "nope" }))).await;
+    let (status, _) = call(
+        api.port,
+        "POST",
+        "/api/v1/updates/skip",
+        t,
+        Some(json!({ "version": "nope" })),
+    )
+    .await;
     assert_eq!(status, 422);
-    let (status, body) = call(api.port, "POST", "/api/v1/updates/skip", t, Some(json!({ "version": "9.9.9" }))).await;
+    let (status, body) = call(
+        api.port,
+        "POST",
+        "/api/v1/updates/skip",
+        t,
+        Some(json!({ "version": "9.9.9" })),
+    )
+    .await;
     assert_eq!(status, 200);
     assert_eq!(json_of(&body)["skipped"], json!(["9.9.9"]));
     let (status, body) = call(api.port, "GET", "/api/v1/updates/history", t, None).await;

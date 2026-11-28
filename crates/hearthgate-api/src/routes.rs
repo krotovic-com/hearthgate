@@ -156,7 +156,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/updates", get(crate::updates::info))
         .route("/api/v1/updates/check", post(crate::updates::check))
         .route("/api/v1/updates/install", post(crate::updates::install))
-        .route("/api/v1/updates/scheduled", axum::routing::delete(crate::updates::unschedule))
+        .route(
+            "/api/v1/updates/scheduled",
+            axum::routing::delete(crate::updates::unschedule),
+        )
         .route("/api/v1/updates/rollback", post(crate::updates::rollback))
         .route("/api/v1/updates/skip", post(crate::updates::skip))
         .route("/api/v1/updates/unskip", post(crate::updates::unskip))

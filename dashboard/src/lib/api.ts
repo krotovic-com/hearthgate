@@ -319,6 +319,68 @@ export interface DesiredState {
   router?: RouterSettings;
   notifications?: NotificationSettings;
   ai?: AiSettings;
+  updates?: UpdateSettings;
+}
+
+export type AutoInstall = 'off' | 'patch' | 'minor';
+
+/** Updates of Hearthgate itself. Nothing installs by itself unless turned on. */
+export interface UpdateSettings {
+  check?: boolean;
+  auto_install?: AutoInstall;
+  /** Local time, HH:MM-HH:MM. */
+  window?: string;
+}
+
+export type NoteKind = 'feature' | 'fix' | 'security' | 'breaking';
+export interface ReleaseNote {
+  kind: NoteKind;
+  text: string;
+}
+
+export interface AvailableUpdate {
+  version: string;
+  published_at: string;
+  bump: 'patch' | 'minor' | 'major';
+  notes: ReleaseNote[];
+  page: string;
+  asset: string | null;
+}
+
+export type StepState = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+export interface JobStep {
+  title: string;
+  detail: string;
+  state: StepState;
+}
+export type JobOutcome = 'running' | 'installed' | 'rolled-back' | 'restored' | 'refused' | 'failed';
+export interface UpdateJob {
+  action: 'install' | 'rollback';
+  from: string;
+  to: string | null;
+  steps: JobStep[];
+  outcome: JobOutcome;
+  detail: string | null;
+  started_unix: number;
+  finished_unix: number | null;
+  log: string[];
+}
+
+export type InstallMethod = 'deb' | 'rpm' | 'tarball' | 'manual';
+export interface UpdateInfo {
+  current: string;
+  method: InstallMethod;
+  method_text: string;
+  can_install: boolean;
+  cannot_install: string | null;
+  settings: Required<UpdateSettings>;
+  checked_unix: number | null;
+  error: string | null;
+  available: AvailableUpdate | null;
+  skipped: string[];
+  scheduled: string | null;
+  job: UpdateJob | null;
+  rollback_to: string | null;
 }
 
 export type EventKind = 'certificates' | 'health' | 'security' | 'backups' | 'updates' | 'reviews';
@@ -616,6 +678,15 @@ export const api = {
       'POST',
       `/api/v1/ai/reviews/${encodeURIComponent(review)}/findings/${finding}/draft`,
     ),
+  updates: () => request<UpdateInfo>('GET', '/api/v1/updates'),
+  checkUpdates: () => request<UpdateInfo>('POST', '/api/v1/updates/check'),
+  installUpdate: (version: string, when: 'now' | 'window') =>
+    request<UpdateInfo>('POST', '/api/v1/updates/install', { version, when }),
+  unscheduleUpdate: () => request<UpdateInfo>('DELETE', '/api/v1/updates/scheduled'),
+  rollbackUpdate: () => request<UpdateInfo>('POST', '/api/v1/updates/rollback'),
+  skipUpdate: (version: string) => request<UpdateInfo>('POST', '/api/v1/updates/skip', { version }),
+  unskipUpdate: (version: string) => request<UpdateInfo>('POST', '/api/v1/updates/unskip', { version }),
+  updateHistory: () => request<UpdateJob[]>('GET', '/api/v1/updates/history'),
   testNotifications: (settings: NotificationSettings) =>
     request<NotificationTestResult[]>('POST', '/api/v1/notifications/test', settings),
   state: () => request<StateResponse>('GET', '/api/v1/state'),

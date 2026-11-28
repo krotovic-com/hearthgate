@@ -24,7 +24,9 @@ pub fn local_minute() -> u16 {
 /// Whether now is inside the install window.
 #[must_use]
 pub fn in_install_window(settings: &Updates, minute: u16) -> bool {
-    settings.window_minutes().is_some_and(|w| in_window(w, minute))
+    settings
+        .window_minutes()
+        .is_some_and(|w| in_window(w, minute))
 }
 
 /// Seconds until the install window next opens (0 when it is open).

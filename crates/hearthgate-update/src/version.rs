@@ -23,7 +23,10 @@ impl Version {
         let mut parts = text.split('.');
         let num = |p: Option<&str>| -> Option<u64> {
             let p = p?;
-            if p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) || (p.len() > 1 && p.starts_with('0')) {
+            if p.is_empty()
+                || !p.bytes().all(|b| b.is_ascii_digit())
+                || (p.len() > 1 && p.starts_with('0'))
+            {
                 return None;
             }
             p.parse().ok()
@@ -98,9 +101,26 @@ mod tests {
 
     #[test]
     fn parses_releases_only() {
-        assert_eq!(v("v1.2.3"), Version { major: 1, minor: 2, patch: 3 });
+        assert_eq!(
+            v("v1.2.3"),
+            Version {
+                major: 1,
+                minor: 2,
+                patch: 3
+            }
+        );
         assert_eq!(v("10.0.12").to_string(), "10.0.12");
-        for bad in ["1.2", "1.2.3.4", "1.2.3-rc.1", "0.0.0-dev", "01.2.3", "1..3", "", "v", "1.2.x"] {
+        for bad in [
+            "1.2",
+            "1.2.3.4",
+            "1.2.3-rc.1",
+            "0.0.0-dev",
+            "01.2.3",
+            "1..3",
+            "",
+            "v",
+            "1.2.x",
+        ] {
             assert!(Version::parse(bad).is_none(), "{bad}");
         }
     }

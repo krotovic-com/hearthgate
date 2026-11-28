@@ -237,10 +237,18 @@ mod tests {
     #[test]
     fn request_format() {
         let r: Request = serde_json::from_str(r#"{"action":"install","version":"1.3.0"}"#).unwrap();
-        assert_eq!(r, Request::Install { version: Version::parse("1.3.0").unwrap() });
+        assert_eq!(
+            r,
+            Request::Install {
+                version: Version::parse("1.3.0").unwrap()
+            }
+        );
         let r: Request = serde_json::from_str(r#"{"action":"rollback"}"#).unwrap();
         assert_eq!(r, Request::Rollback);
-        assert!(serde_json::from_str::<Request>(r#"{"action":"install","version":"../../etc"}"#).is_err());
+        assert!(
+            serde_json::from_str::<Request>(r#"{"action":"install","version":"../../etc"}"#)
+                .is_err()
+        );
         assert!(serde_json::from_str::<Request>(r#"{"action":"run","cmd":"sh"}"#).is_err());
     }
 }

@@ -146,7 +146,10 @@ impl Updater {
 
     /// Takes new settings from the desired state.
     pub fn set_settings(&self, settings: Updates) {
-        let mut s = self.settings.write().unwrap_or_else(PoisonError::into_inner);
+        let mut s = self
+            .settings
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
         if *s != settings {
             *s = settings;
             drop(s);
@@ -155,7 +158,10 @@ impl Updater {
     }
 
     fn settings(&self) -> Updates {
-        self.settings.read().unwrap_or_else(PoisonError::into_inner).clone()
+        self.settings
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     fn remember<R>(&self, f: impl FnOnce(&mut Remembered) -> R) -> R {
@@ -207,21 +213,32 @@ impl Updater {
         if std::fs::symlink_metadata(self.layout.request()).is_ok() {
             return true;
         }
-        self.job()
-            .is_some_and(|j| j.outcome == Outcome::Running && now_unix() < j.started_unix + JOB_STALE)
+        self.job().is_some_and(|j| {
+            j.outcome == Outcome::Running && now_unix() < j.started_unix + JOB_STALE
+        })
     }
 
     fn rollback_to(&self) -> Option<Version> {
         let kept: Backup = read_json(&self.layout.kept())?;
-        self.current.filter(|c| kept.version < *c).map(|_| kept.version)
+        self.current
+            .filter(|c| kept.version < *c)
+            .map(|_| kept.version)
     }
 
     /// Everything the dashboard shows.
     #[must_use]
     pub fn info(&self) -> UpdateInfo {
-        let mut m = self.memory.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        let mut m = self
+            .memory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         // Rolled-back versions count as skipped before the loop records it.
-        for job in self.history().into_iter().filter(|j| j.started_unix > m.seen_job) {
+        for job in self
+            .history()
+            .into_iter()
+            .filter(|j| j.started_unix > m.seen_job)
+        {
             if job.outcome == Outcome::RolledBack
                 && let Some(v) = job.to
             {
@@ -241,7 +258,9 @@ impl Updater {
             settings: self.settings(),
             checked_unix: m.checked_unix,
             error: m.error,
-            available: m.available.filter(|a| self.current.is_none_or(|c| a.version > c)),
+            available: m
+                .available
+                .filter(|a| self.current.is_none_or(|c| a.version > c)),
             skipped: m.skipped.into_iter().collect(),
             scheduled: m.scheduled,
             job: self.job(),
@@ -252,8 +271,16 @@ impl Updater {
     /// Versions the helper rolled back become skipped, so they don't
     /// install again by themselves.
     fn absorb_jobs(&self) {
-        let seen = self.memory.lock().unwrap_or_else(PoisonError::into_inner).seen_job;
-        let new: Vec<Job> = self.history().into_iter().filter(|j| j.started_unix > seen).collect();
+        let seen = self
+            .memory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .seen_job;
+        let new: Vec<Job> = self
+            .history()
+            .into_iter()
+            .filter(|j| j.started_unix > seen)
+            .collect();
         if new.is_empty() {
             return;
         }
@@ -307,7 +334,10 @@ impl Updater {
             return Ok(None);
         }
         let mut notes: Vec<Note> = Vec::new();
-        for r in releases.iter().filter(|r| current.is_none_or(|c| r.version > c)) {
+        for r in releases
+            .iter()
+            .filter(|r| current.is_none_or(|c| r.version > c))
+        {
             for n in crate::notes::parse(&r.body) {
                 if !notes.contains(&n) {
                     notes.push(n);
@@ -326,7 +356,14 @@ impl Updater {
             .unwrap_or(Bump::Major);
         let asset = self
             .arch
-            .and_then(|a| pick_asset(newest.assets.iter().map(String::as_str), self.method, newest.version, a))
+            .and_then(|a| {
+                pick_asset(
+                    newest.assets.iter().map(String::as_str),
+                    self.method,
+                    newest.version,
+                    a,
+                )
+            })
             .map(str::to_owned);
         Ok(Some(Available {
             version: newest.version,
@@ -344,21 +381,35 @@ impl Updater {
         let arch = self.arch.ok_or("there are no releases for this CPU")?;
         let get = |name: &'static str, max: usize| {
             let url = github::asset_url(version, name);
-            async move { self.fetch.get(&url, max as u64).await.map_err(|e| format!("{name}: {e}")) }
+            async move {
+                self.fetch
+                    .get(&url, max as u64)
+                    .await
+                    .map_err(|e| format!("{name}: {e}"))
+            }
         };
         let sums = get("SHA256SUMS", MAX_SUMS_BYTES).await?;
         let sig = get("SHA256SUMS.minisig", MAX_SIGNATURE_BYTES).await?;
-        let sig_text = String::from_utf8(sig.clone()).map_err(|_| "the signature is not text".to_owned())?;
-        let checked = verify_sums(&sums, &sig_text, version, &self.keys).map_err(|e| e.to_string())?;
+        let sig_text =
+            String::from_utf8(sig.clone()).map_err(|_| "the signature is not text".to_owned())?;
+        let checked =
+            verify_sums(&sums, &sig_text, version, &self.keys).map_err(|e| e.to_string())?;
         let asset = pick_asset(checked.names(), self.method, version, arch)
-            .ok_or_else(|| format!("the release has no {} for this machine", self.method.describe()))?
+            .ok_or_else(|| {
+                format!(
+                    "the release has no {} for this machine",
+                    self.method.describe()
+                )
+            })?
             .to_owned();
         let data = self
             .fetch
             .get(&github::asset_url(version, &asset), MAX_ASSET_BYTES)
             .await
             .map_err(|e| format!("{asset}: {e}"))?;
-        checked.check_bytes(&asset, &data).map_err(|e| e.to_string())?;
+        checked
+            .check_bytes(&asset, &data)
+            .map_err(|e| e.to_string())?;
 
         let updates = self.layout.updates();
         ensure_dir(&updates, 0o700).map_err(|e| e.to_string())?;
@@ -366,7 +417,9 @@ impl Updater {
         if let Ok(entries) = std::fs::read_dir(&updates) {
             for e in entries.filter_map(Result::ok) {
                 let name = e.file_name();
-                if name.to_string_lossy().starts_with('v') && e.file_type().is_ok_and(|t| t.is_dir()) {
+                if name.to_string_lossy().starts_with('v')
+                    && e.file_type().is_ok_and(|t| t.is_dir())
+                {
                     let _ = std::fs::remove_dir_all(e.path());
                 }
             }
@@ -387,9 +440,16 @@ impl Updater {
             return Err(why);
         }
         self.absorb_jobs();
-        let available = self.memory.lock().unwrap_or_else(PoisonError::into_inner).available.clone();
+        let available = self
+            .memory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .available
+            .clone();
         if available.as_ref().map(|a| a.version) != Some(version) {
-            return Err(format!("{version} is not the newest release; check for updates first"));
+            return Err(format!(
+                "{version} is not the newest release; check for updates first"
+            ));
         }
         if self.job_running() {
             return Err("An install or rollback is already going on.".into());
@@ -404,7 +464,8 @@ impl Updater {
             m.scheduled = None;
             m.skipped.remove(&version);
         });
-        write_json(&self.layout.request(), &Request::Install { version }, 0o644).map_err(|e| e.to_string())?;
+        write_json(&self.layout.request(), &Request::Install { version }, 0o644)
+            .map_err(|e| e.to_string())?;
         info!("asked the upgrade helper to install {version}");
         Ok(self.info())
     }
@@ -452,7 +513,10 @@ impl Updater {
     /// automatic setting allows, inside the window.
     fn due(&self, minute: u16) -> Option<Version> {
         let settings = self.settings();
-        if !policy::in_install_window(&settings, minute) || self.cannot_install().is_some() || self.job_running() {
+        if !policy::in_install_window(&settings, minute)
+            || self.cannot_install().is_some()
+            || self.job_running()
+        {
             return None;
         }
         let m = self.memory.lock().unwrap_or_else(PoisonError::into_inner);
@@ -471,8 +535,17 @@ impl Updater {
     async fn tick(&self, minute: u16, notify: &(dyn Fn(&str, &Available) + Send + Sync)) {
         self.absorb_jobs();
         let settings = self.settings();
-        let checked = self.memory.lock().unwrap_or_else(PoisonError::into_inner).checked_unix;
-        let scheduled = self.memory.lock().unwrap_or_else(PoisonError::into_inner).scheduled.is_some();
+        let checked = self
+            .memory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .checked_unix;
+        let scheduled = self
+            .memory
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .scheduled
+            .is_some();
         let stale = checked.is_none_or(|t| now_unix() >= t + CHECK_EVERY);
         if (settings.check || scheduled) && stale && self.current.is_some() {
             match self.check().await {
