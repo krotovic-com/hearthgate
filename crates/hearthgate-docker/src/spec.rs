@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 
 use bollard::models::{
-    ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
-    RestartPolicy, RestartPolicyNameEnum,
+    ContainerCreateBody, DeviceMapping, EndpointSettings, HostConfig, NetworkingConfig,
+    PortBinding, RestartPolicy, RestartPolicyNameEnum,
 };
-use hearthgate_model::{Container, Publish, Restart};
+use hearthgate_model::{Container, Device, Publish, Restart};
 use sha2::{Digest, Sha256};
 
 /// Label naming the managed container it belongs to.
@@ -61,6 +61,16 @@ pub fn create_body(container: &Container, network: &str) -> ContainerCreateBody 
         Restart::UnlessStopped => RestartPolicyNameEnum::UNLESS_STOPPED,
         Restart::OnFailure => RestartPolicyNameEnum::ON_FAILURE,
     };
+    let devices: Vec<DeviceMapping> = container
+        .devices
+        .iter()
+        .filter_map(|d| Device::parse(d))
+        .map(|d| DeviceMapping {
+            path_on_host: Some(d.host),
+            path_in_container: Some(d.container),
+            cgroup_permissions: Some(d.permissions),
+        })
+        .collect();
     let labels = HashMap::from([
         (CONTAINER_LABEL.to_owned(), container.name.clone()),
         (SPEC_LABEL.to_owned(), spec_hash(container)),
@@ -80,6 +90,8 @@ pub fn create_body(container: &Container, network: &str) -> ContainerCreateBody 
         host_config: Some(HostConfig {
             binds: (!container.volumes.is_empty()).then(|| container.volumes.clone()),
             port_bindings: (!bindings.is_empty()).then_some(bindings),
+            devices: (!devices.is_empty()).then_some(devices),
+            group_add: (!container.groups.is_empty()).then(|| container.groups.clone()),
             restart_policy: Some(RestartPolicy {
                 name: Some(restart),
                 maximum_retry_count: None,
@@ -109,6 +121,8 @@ mod tests {
             "volumes": ["/srv/w:/data:ro"],
             "publish": ["127.0.0.1:8081:80", "5353:53/udp"],
             "restart": "always",
+            "devices": ["/dev/dri", "/dev/ttyUSB0:/dev/zigbee:rw"],
+            "groups": ["render"],
         }))
         .unwrap();
         let body = create_body(&container, "hearthgate");
@@ -119,6 +133,13 @@ mod tests {
         assert_eq!(web[0].host_ip.as_deref(), Some("127.0.0.1"));
         assert_eq!(web[0].host_port.as_deref(), Some("8081"));
         assert!(ports.contains_key("53/udp"));
+        let devices = host.devices.as_ref().unwrap();
+        assert_eq!(devices[0].path_on_host.as_deref(), Some("/dev/dri"));
+        assert_eq!(devices[0].path_in_container.as_deref(), Some("/dev/dri"));
+        assert_eq!(devices[0].cgroup_permissions.as_deref(), Some("rwm"));
+        assert_eq!(devices[1].path_in_container.as_deref(), Some("/dev/zigbee"));
+        assert_eq!(devices[1].cgroup_permissions.as_deref(), Some("rw"));
+        assert_eq!(host.group_add.as_deref(), Some(&["render".to_owned()][..]));
         assert_eq!(
             host.restart_policy.unwrap().name,
             Some(RestartPolicyNameEnum::ALWAYS)
@@ -132,6 +153,10 @@ mod tests {
         );
         let labels = body.labels.unwrap();
         assert_eq!(labels[CONTAINER_LABEL], "whoami");
+        let plain: Container =
+            serde_json::from_value(serde_json::json!({"name": "a", "image": "x"})).unwrap();
+        let plain_host = create_body(&plain, "hearthgate").host_config.unwrap();
+        assert!(plain_host.devices.is_none() && plain_host.group_add.is_none());
         let mut changed = container.clone();
         changed.image = "traefik/whoami:v1.11".into();
         assert_ne!(spec_hash(&changed), labels[SPEC_LABEL]);

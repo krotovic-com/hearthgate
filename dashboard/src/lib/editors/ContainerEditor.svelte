@@ -8,7 +8,7 @@
   import type { ManagedContainer, RestartPolicy, Service } from '../api';
   import { draft, edit } from '../gateway.svelte';
   import { nameProblem, portProblem, slug } from './common';
-  import { lines, parseEnv, publishProblem, showCommand, showEnv, splitCommand, volumeProblem } from '../docker';
+  import { deviceProblem, groupProblem, lines, parseEnv, publishProblem, showCommand, showEnv, splitCommand, volumeProblem } from '../docker';
 
   let { open = $bindable(false), original = null }: { open?: boolean; original?: ManagedContainer | null } = $props();
 
@@ -19,6 +19,8 @@
   let envText = $state('');
   let volumesText = $state('');
   let publishText = $state('');
+  let devicesText = $state('');
+  let groupsText = $state('');
   let restart = $state<RestartPolicy>('unless-stopped');
   let running = $state(true);
   let addService = $state(true);
@@ -35,6 +37,8 @@
     envText = showEnv(c?.env);
     volumesText = (c?.volumes ?? []).join('\n');
     publishText = (c?.publish ?? []).join('\n');
+    devicesText = (c?.devices ?? []).join('\n');
+    groupsText = (c?.groups ?? []).join('\n');
     restart = c?.restart ?? 'unless-stopped';
     running = c?.running !== false;
     addService = !c;
@@ -53,9 +57,11 @@
   const env = $derived(parseEnv(envText));
   const volumeError = $derived(lines(volumesText).map(volumeProblem).find(Boolean) ?? null);
   const publishError = $derived(lines(publishText).map(publishProblem).find(Boolean) ?? null);
+  const deviceError = $derived(lines(devicesText).map(deviceProblem).find(Boolean) ?? null);
+  const groupError = $derived(lines(groupsText).map(groupProblem).find(Boolean) ?? null);
   const serviceTaken = $derived(draft.services.some((s) => s.name === name));
   const servicePortError = $derived(addService ? portProblem(servicePort) : null);
-  const valid = $derived(!nameError && !imageError && !env.problem && !volumeError && !publishError && !servicePortError);
+  const valid = $derived(!nameError && !imageError && !env.problem && !volumeError && !publishError && !deviceError && !groupError && !servicePortError);
 
   function save() {
     tried = true;
@@ -68,6 +74,8 @@
       env: env.env,
       volumes: lines(volumesText),
       publish: lines(publishText),
+      devices: lines(devicesText),
+      groups: lines(groupsText),
       restart,
     };
     edit((s) => {
@@ -140,6 +148,26 @@
       placeholder="127.0.0.1:8080:80"
       hint="One per line. Use a route instead to make it public."
       error={tried ? publishError : null}
+    />
+  </div>
+  <div class="grid">
+    <TextArea
+      label="Devices"
+      bind:value={devicesText}
+      mono
+      rows={2}
+      placeholder="/dev/dri"
+      hint="One per line: /dev/host[:/dev/container[:rwm]]. /dev/dri passes an Intel or AMD GPU."
+      error={tried ? deviceError : null}
+    />
+    <TextArea
+      label="Extra groups"
+      bind:value={groupsText}
+      mono
+      rows={2}
+      placeholder="993"
+      hint="One per line, so the container can open devices that group owns. Use the number from getent group render on the server, since the image may not know the name."
+      error={tried ? groupError : null}
     />
   </div>
   <div class="grid">

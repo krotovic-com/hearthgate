@@ -216,6 +216,8 @@ function compactContainer(c: ManagedContainer): ManagedContainer {
   if (!out.env || !Object.keys(out.env).length) delete out.env;
   if (!out.volumes?.length) delete out.volumes;
   if (!out.publish?.length) delete out.publish;
+  if (!out.devices?.length) delete out.devices;
+  if (!out.groups?.length) delete out.groups;
   if (!out.restart || out.restart === 'unless-stopped') delete out.restart;
   return out;
 }

@@ -382,6 +382,22 @@ impl DesiredState {
                     );
                 }
             }
+            for device in &container.devices {
+                if crate::Device::parse(device).is_none() {
+                    c.push(
+                        &path,
+                        format!("devices: `{device}` is not /dev/host[:/dev/container[:rwm]]"),
+                    );
+                }
+            }
+            for group in &container.groups {
+                if !crate::is_valid_group(group) {
+                    c.push(
+                        &path,
+                        format!("groups: `{group}` is not a group name or number"),
+                    );
+                }
+            }
             for publish in &container.publish {
                 match crate::Publish::parse(publish) {
                     None => c.push(

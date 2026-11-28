@@ -253,6 +253,8 @@ export interface ManagedContainer {
   env?: Record<string, string>;
   volumes?: string[];
   publish?: string[];
+  devices?: string[];
+  groups?: string[];
   restart?: RestartPolicy;
 }
 

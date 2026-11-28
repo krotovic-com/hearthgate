@@ -379,6 +379,8 @@ image = "traefik/whoami:v1.10"
 env = { TZ = "Europe/Prague" }
 volumes = ["/srv/whoami:/data:ro", "cache:/cache"]
 publish = ["127.0.0.1:8081:80"]
+devices = ["/dev/dri", "/dev/dri/renderD128:/dev/dri/renderD128:rw"]
+groups = ["render", "993"]
 
 [[stacks]]
 name = "notes"
@@ -416,6 +418,18 @@ running = false
     assert_problem(
         "[[interfaces]]\nname = \"web\"\nlisteners = [{ port = 8080, mode = \"raw\" }]\n[[containers]]\nname = \"a\"\nimage = \"x\"\npublish = [\"8080:80\"]\n",
         "used by a public interface",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\ndevices = [\"/etc/shadow\"]\n",
+        "devices",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\ndevices = [\"/dev/dri:/dev/dri:rx\"]\n",
+        "devices",
+    );
+    assert_problem(
+        "[[containers]]\nname = \"a\"\nimage = \"x\"\ngroups = [\"Render Group\"]\n",
+        "groups",
     );
     assert_problem("[[stacks]]\nname = \"s\"\ncompose = \" \"\n", "empty");
     assert_problem(
@@ -503,4 +517,40 @@ to = ["me@example.com"]
         &ok.replace("username = \"me\"\n", ""),
         "needed with a password",
     );
+}
+
+#[test]
+fn parses_devices_and_groups() {
+    let d = Device::parse("/dev/dri").unwrap();
+    assert_eq!(
+        (
+            d.host.as_str(),
+            d.container.as_str(),
+            d.permissions.as_str()
+        ),
+        ("/dev/dri", "/dev/dri", "rwm")
+    );
+    let d = Device::parse("/dev/ttyUSB0:/dev/zigbee:rw").unwrap();
+    assert_eq!(
+        (d.container.as_str(), d.permissions.as_str()),
+        ("/dev/zigbee", "rw")
+    );
+    for bad in [
+        "",
+        "/dev/",
+        "dri",
+        "/dev/../etc",
+        "/dev/dri:dri",
+        "/dev/dri:/dev/dri:",
+        "/dev/dri:/dev/dri:rr",
+        "/dev/a:/b:/c:rw",
+    ] {
+        assert!(Device::parse(bad).is_none(), "{bad}");
+    }
+    for ok in ["render", "video", "_x", "993", "0"] {
+        assert!(is_valid_group(ok), "{ok}");
+    }
+    for bad in ["", "Render", "9x", "a b", "99999999999"] {
+        assert!(!is_valid_group(bad), "{bad}");
+    }
 }
