@@ -6,6 +6,13 @@
 //! reach them without publishing host ports. Hearthgate only ever touches
 //! containers it created (labelled `com.hearthgate.container`) and stacks
 //! it keeps files for.
+//!
+//! The `hearthgate` network lets packets routed in from other interfaces
+//! reach its containers (Docker's `nat-unprotected` gateway mode), so VPN
+//! peers can connect to them. Docker 28 and later otherwise drop such
+//! packets before any other firewall sees them. Hearthgate's own nftables
+//! table decides who gets in instead: VPN peers by their access, and
+//! nobody else.
 
 pub mod compose;
 pub mod spec;
@@ -16,7 +23,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{PoisonError, RwLock};
 
 use bollard::Docker;
-use bollard::models::{EndpointSettings, NetworkConnectRequest, NetworkCreateRequest};
+use bollard::models::{
+    EndpointSettings, NetworkConnectRequest, NetworkCreateRequest, NetworkDisconnectRequest,
+};
 use bollard::query_parameters::{
     CreateContainerOptionsBuilder, CreateImageOptionsBuilder, InspectContainerOptions,
     InspectNetworkOptions, ListContainersOptionsBuilder, LogsOptionsBuilder,
@@ -34,6 +43,13 @@ pub use spec::{CONTAINER_LABEL, NETWORK_LABEL, SPEC_LABEL, create_body, spec_has
 
 /// The Docker network managed containers join.
 pub const NETWORK: &str = "hearthgate";
+/// Docker's bridge option for how traffic reaches the network's containers.
+pub const GATEWAY_MODE: &str = "com.docker.network.bridge.gateway_mode_ipv4";
+/// The mode the `hearthgate` network uses: masquerade on the way out, and
+/// packets routed in from other interfaces (the VPN) are not dropped.
+pub const GATEWAY_MODE_VALUE: &str = "nat-unprotected";
+/// The first Docker API version (Docker 28.0) with that mode.
+const GATEWAY_MODE_API: (u32, u32) = (1, 48);
 /// Label Compose puts on a project's containers.
 const PROJECT_LABEL: &str = "com.docker.compose.project";
 const SERVICE_LABEL: &str = "com.docker.compose.service";
@@ -262,23 +278,102 @@ impl Manager {
             .inspect_network(NETWORK, None::<InspectNetworkOptions>)
             .await
         {
-            Ok(_) => Ok(()),
+            Ok(network) => {
+                let mode = network
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.get(GATEWAY_MODE))
+                    .map(String::as_str);
+                let ours = network
+                    .labels
+                    .as_ref()
+                    .is_some_and(|l| l.contains_key(NETWORK_LABEL));
+                if mode == Some(GATEWAY_MODE_VALUE) || !ours || !self.has_gateway_mode().await {
+                    return Ok(());
+                }
+                // A network's options are fixed when it is created, so one
+                // from an older Hearthgate is created again, with the same
+                // containers on it. A network someone else made is left
+                // alone.
+                let attached: Vec<String> =
+                    network.containers.unwrap_or_default().into_keys().collect();
+                info!(
+                    "recreating the Docker network `{NETWORK}` so VPN peers can reach its \
+                     containers ({} attached)",
+                    attached.len()
+                );
+                for id in &attached {
+                    docker
+                        .disconnect_network(
+                            NETWORK,
+                            NetworkDisconnectRequest {
+                                container: Some(id.clone()),
+                                force: Some(true),
+                            },
+                        )
+                        .await?;
+                }
+                docker.remove_network(NETWORK).await?;
+                self.create_network(true).await?;
+                for id in attached {
+                    if let Err(e) = docker
+                        .connect_network(
+                            NETWORK,
+                            NetworkConnectRequest {
+                                container: Some(id.clone()),
+                                endpoint_config: Some(EndpointSettings::default()),
+                            },
+                        )
+                        .await
+                    {
+                        warn!("cannot join container {id} to `{NETWORK}` again: {e}");
+                    }
+                }
+                Ok(())
+            }
             Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {
-                docker
-                    .create_network(NetworkCreateRequest {
-                        name: NETWORK.into(),
-                        driver: Some("bridge".into()),
-                        labels: Some(HashMap::from([(NETWORK_LABEL.into(), "true".into())])),
-                        ..NetworkCreateRequest::default()
-                    })
-                    .await?;
-                info!("created the Docker network `{NETWORK}`");
-                Ok(())
+                let mode = self.has_gateway_mode().await;
+                self.create_network(mode).await
             }
             Err(e) => Err(e.into()),
         }
+    }
+
+    async fn create_network(&self, gateway_mode: bool) -> Result<(), Error> {
+        let options = gateway_mode
+            .then(|| HashMap::from([(GATEWAY_MODE.to_owned(), GATEWAY_MODE_VALUE.to_owned())]));
+        if !gateway_mode {
+            warn!(
+                "this Docker is older than 28.0, so VPN peers cannot reach containers on \
+                 `{NETWORK}` directly; update Docker to fix that"
+            );
+        }
+        self.docker()?
+            .create_network(NetworkCreateRequest {
+                name: NETWORK.into(),
+                driver: Some("bridge".into()),
+                labels: Some(HashMap::from([(NETWORK_LABEL.into(), "true".into())])),
+                options,
+                ..NetworkCreateRequest::default()
+            })
+            .await?;
+        info!("created the Docker network `{NETWORK}`");
+        Ok(())
+    }
+
+    /// Whether Docker knows the `nat-unprotected` gateway mode.
+    async fn has_gateway_mode(&self) -> bool {
+        let Ok(docker) = self.docker() else {
+            return false;
+        };
+        docker
+            .version()
+            .await
+            .ok()
+            .and_then(|v| v.api_version)
+            .is_some_and(|v| api_at_least(&v, GATEWAY_MODE_API))
     }
 
     async fn image_present(&self, image: &str) -> Result<bool, Error> {
@@ -864,5 +959,30 @@ impl Manager {
             .iter()
             .filter_map(|c| Some((c.name.clone(), c.address?)))
             .collect()
+    }
+}
+
+/// Whether a Docker API version such as `1.48` is at least `min`.
+fn api_at_least(version: &str, min: (u32, u32)) -> bool {
+    let mut parts = version.trim().split('.').map(str::parse::<u32>);
+    match (parts.next(), parts.next()) {
+        (Some(Ok(major)), Some(Ok(minor))) => (major, minor) >= min,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::api_at_least;
+
+    #[test]
+    fn compares_api_versions() {
+        assert!(api_at_least("1.48", (1, 48)));
+        assert!(api_at_least("1.52", (1, 48)));
+        assert!(api_at_least("2.0", (1, 48)));
+        assert!(!api_at_least("1.47", (1, 48)));
+        assert!(!api_at_least("1.9", (1, 48)));
+        assert!(!api_at_least("", (1, 48)));
+        assert!(!api_at_least("x.y", (1, 48)));
     }
 }

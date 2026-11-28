@@ -192,6 +192,7 @@ fn inputs() -> Inputs {
         lan: vec!["192.168.77.0/24".parse().unwrap()],
         trusted_interfaces: Vec::new(),
         vpn: None,
+        containers: None,
     }
 }
 

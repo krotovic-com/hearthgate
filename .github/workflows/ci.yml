@@ -54,9 +54,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends nftables iproute2 wireguard-tools
           cargo test --locked -p hearthgate-firewall --test netns
           cargo test --locked -p hearthgate --test vpn_netns
+          cargo test --locked -p hearthgate --test vpn_docker
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
           HEARTHGATE_NETNS_TESTS: '1'
+          # The VPN-to-containers test needs the runner's own network
+          # namespace, where Docker runs. Throwaway runners only.
+          HEARTHGATE_HOST_TESTS: '1'
 
   deny:
     name: dependencies (advisories, licenses, sources)
